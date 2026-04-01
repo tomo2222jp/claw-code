@@ -408,7 +408,7 @@ mod tests {
                 .sum::<i32>();
             Ok(total.to_string())
         });
-        let permission_policy = PermissionPolicy::new(PermissionMode::Prompt);
+        let permission_policy = PermissionPolicy::new(PermissionMode::WorkspaceWrite);
         let system_prompt = SystemPromptBuilder::new()
             .with_project_context(ProjectContext {
                 cwd: PathBuf::from("/tmp/project"),
@@ -487,7 +487,7 @@ mod tests {
             Session::new(),
             SingleCallApiClient,
             StaticToolExecutor::new(),
-            PermissionPolicy::new(PermissionMode::Prompt),
+            PermissionPolicy::new(PermissionMode::WorkspaceWrite),
             vec!["system".to_string()],
         );
 
@@ -536,7 +536,7 @@ mod tests {
             session,
             SimpleApi,
             StaticToolExecutor::new(),
-            PermissionPolicy::new(PermissionMode::Allow),
+            PermissionPolicy::new(PermissionMode::DangerFullAccess),
             vec!["system".to_string()],
         );
 
@@ -563,7 +563,7 @@ mod tests {
             Session::new(),
             SimpleApi,
             StaticToolExecutor::new(),
-            PermissionPolicy::new(PermissionMode::Allow),
+            PermissionPolicy::new(PermissionMode::DangerFullAccess),
             vec!["system".to_string()],
         );
         runtime.run_turn("a", None).expect("turn a");

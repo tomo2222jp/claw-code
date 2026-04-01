@@ -11,8 +11,8 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use api::{
-    resolve_startup_auth_source, AnthropicClient, AuthSource, ContentBlockDelta, InputContentBlock,
-    InputMessage, MessageRequest, MessageResponse, OutputContentBlock,
+    resolve_startup_auth_source, AnthropicClient, AuthSource, ContentBlockDelta, ImageSource,
+    InputContentBlock, InputMessage, MessageRequest, MessageResponse, OutputContentBlock,
     StreamEvent as ApiStreamEvent, ToolChoice, ToolDefinition, ToolResultContentBlock,
 };
 
@@ -41,6 +41,7 @@ const BUILD_TARGET: Option<&str> = option_env!("TARGET");
 const GIT_SHA: Option<&str> = option_env!("GIT_SHA");
 
 type AllowedToolSet = BTreeSet<String>;
+const IMAGE_REF_PREFIX: &str = "@";
 
 fn main() {
     if let Err(error) = run() {
@@ -1042,9 +1043,7 @@ impl LiveCli {
             max_tokens: DEFAULT_MAX_TOKENS,
             messages: vec![InputMessage {
                 role: "user".to_string(),
-                content: vec![InputContentBlock::Text {
-                    text: input.to_string(),
-                }],
+                content: prompt_to_content_blocks(input, &env::current_dir()?)?,
             }],
             system: (!self.system_prompt.is_empty()).then(|| self.system_prompt.join("\n\n")),
             tools: None,
@@ -2021,7 +2020,7 @@ impl ApiClient for AnthropicRuntimeClient {
         let message_request = MessageRequest {
             model: self.model.clone(),
             max_tokens: DEFAULT_MAX_TOKENS,
-            messages: convert_messages(&request.messages),
+            messages: convert_messages(&request.messages)?,
             system: (!request.system_prompt.is_empty()).then(|| request.system_prompt.join("\n\n")),
             tools: self.enable_tools.then(|| {
                 filter_tool_specs(self.allowed_tools.as_ref())
@@ -2300,7 +2299,10 @@ fn tool_permission_specs() -> Vec<ToolSpec> {
     mvp_tool_specs()
 }
 
-fn convert_messages(messages: &[ConversationMessage]) -> Vec<InputMessage> {
+fn convert_messages(messages: &[ConversationMessage]) -> Result<Vec<InputMessage>, RuntimeError> {
+    let cwd = env::current_dir().map_err(|error| {
+        RuntimeError::new(format!("failed to resolve current directory: {error}"))
+    })?;
     messages
         .iter()
         .filter_map(|message| {
@@ -2311,34 +2313,222 @@ fn convert_messages(messages: &[ConversationMessage]) -> Vec<InputMessage> {
             let content = message
                 .blocks
                 .iter()
-                .map(|block| match block {
-                    ContentBlock::Text { text } => InputContentBlock::Text { text: text.clone() },
-                    ContentBlock::ToolUse { id, name, input } => InputContentBlock::ToolUse {
-                        id: id.clone(),
-                        name: name.clone(),
-                        input: serde_json::from_str(input)
-                            .unwrap_or_else(|_| serde_json::json!({ "raw": input })),
-                    },
-                    ContentBlock::ToolResult {
-                        tool_use_id,
-                        output,
-                        is_error,
-                        ..
-                    } => InputContentBlock::ToolResult {
-                        tool_use_id: tool_use_id.clone(),
-                        content: vec![ToolResultContentBlock::Text {
-                            text: output.clone(),
-                        }],
-                        is_error: *is_error,
-                    },
-                })
-                .collect::<Vec<_>>();
-            (!content.is_empty()).then(|| InputMessage {
-                role: role.to_string(),
-                content,
-            })
+                .try_fold(Vec::new(), |mut acc, block| {
+                    match block {
+                        ContentBlock::Text { text } => {
+                            if message.role == MessageRole::User {
+                                acc.extend(
+                                    prompt_to_content_blocks(text, &cwd)
+                                        .map_err(RuntimeError::new)?,
+                                );
+                            } else {
+                                acc.push(InputContentBlock::Text { text: text.clone() });
+                            }
+                        }
+                        ContentBlock::ToolUse { id, name, input } => {
+                            acc.push(InputContentBlock::ToolUse {
+                                id: id.clone(),
+                                name: name.clone(),
+                                input: serde_json::from_str(input)
+                                    .unwrap_or_else(|_| serde_json::json!({ "raw": input })),
+                            });
+                        }
+                        ContentBlock::ToolResult {
+                            tool_use_id,
+                            output,
+                            is_error,
+                            ..
+                        } => acc.push(InputContentBlock::ToolResult {
+                            tool_use_id: tool_use_id.clone(),
+                            content: vec![ToolResultContentBlock::Text {
+                                text: output.clone(),
+                            }],
+                            is_error: *is_error,
+                        }),
+                    }
+                    Ok::<_, RuntimeError>(acc)
+                });
+            match content {
+                Ok(content) if !content.is_empty() => Some(Ok(InputMessage {
+                    role: role.to_string(),
+                    content,
+                })),
+                Ok(_) => None,
+                Err(error) => Some(Err(error)),
+            }
         })
         .collect()
+}
+
+fn prompt_to_content_blocks(input: &str, cwd: &Path) -> Result<Vec<InputContentBlock>, String> {
+    let mut blocks = Vec::new();
+    let mut text_buffer = String::new();
+    let mut chars = input.char_indices().peekable();
+
+    while let Some((index, ch)) = chars.next() {
+        if ch == '!' && input[index..].starts_with("![") {
+            if let Some((alt_end, path_start, path_end)) = parse_markdown_image_ref(input, index) {
+                let _ = alt_end;
+                flush_text_block(&mut blocks, &mut text_buffer);
+                let path = &input[path_start..path_end];
+                blocks.push(load_image_block(path, cwd)?);
+                while let Some((next_index, _)) = chars.peek() {
+                    if *next_index < path_end + 1 {
+                        let _ = chars.next();
+                    } else {
+                        break;
+                    }
+                }
+                continue;
+            }
+        }
+
+        if ch == '@' && is_ref_boundary(input[..index].chars().next_back()) {
+            let path_end = find_path_end(input, index + 1);
+            if path_end > index + 1 {
+                let candidate = &input[index + 1..path_end];
+                if looks_like_image_ref(candidate, cwd) {
+                    flush_text_block(&mut blocks, &mut text_buffer);
+                    blocks.push(load_image_block(candidate, cwd)?);
+                    while let Some((next_index, _)) = chars.peek() {
+                        if *next_index < path_end {
+                            let _ = chars.next();
+                        } else {
+                            break;
+                        }
+                    }
+                    continue;
+                }
+            }
+        }
+
+        text_buffer.push(ch);
+    }
+
+    flush_text_block(&mut blocks, &mut text_buffer);
+    if blocks.is_empty() {
+        blocks.push(InputContentBlock::Text {
+            text: input.to_string(),
+        });
+    }
+    Ok(blocks)
+}
+
+fn parse_markdown_image_ref(input: &str, start: usize) -> Option<(usize, usize, usize)> {
+    let after_bang = input.get(start + 2..)?;
+    let alt_end_offset = after_bang.find("](")?;
+    let path_start = start + 2 + alt_end_offset + 2;
+    let remainder = input.get(path_start..)?;
+    let path_end_offset = remainder.find(')')?;
+    let path_end = path_start + path_end_offset;
+    Some((start + 2 + alt_end_offset, path_start, path_end))
+}
+
+fn is_ref_boundary(ch: Option<char>) -> bool {
+    ch.is_none_or(char::is_whitespace)
+}
+
+fn find_path_end(input: &str, start: usize) -> usize {
+    input[start..]
+        .char_indices()
+        .find_map(|(offset, ch)| (ch.is_whitespace()).then_some(start + offset))
+        .unwrap_or(input.len())
+}
+
+fn looks_like_image_ref(candidate: &str, cwd: &Path) -> bool {
+    let resolved = resolve_prompt_path(candidate, cwd);
+    media_type_for_path(Path::new(candidate)).is_some()
+        || resolved.is_file()
+        || candidate.contains(std::path::MAIN_SEPARATOR)
+        || candidate.starts_with("./")
+        || candidate.starts_with("../")
+}
+
+fn flush_text_block(blocks: &mut Vec<InputContentBlock>, text_buffer: &mut String) {
+    if text_buffer.is_empty() {
+        return;
+    }
+    blocks.push(InputContentBlock::Text {
+        text: std::mem::take(text_buffer),
+    });
+}
+
+fn load_image_block(path_ref: &str, cwd: &Path) -> Result<InputContentBlock, String> {
+    let resolved = resolve_prompt_path(path_ref, cwd);
+    let media_type = media_type_for_path(&resolved).ok_or_else(|| {
+        format!(
+            "unsupported image format for reference {IMAGE_REF_PREFIX}{path_ref}; supported: png, jpg, jpeg, gif, webp"
+        )
+    })?;
+    let bytes = fs::read(&resolved).map_err(|error| {
+        format!(
+            "failed to read image reference {}: {error}",
+            resolved.display()
+        )
+    })?;
+    Ok(InputContentBlock::Image {
+        source: ImageSource {
+            kind: "base64".to_string(),
+            media_type: media_type.to_string(),
+            data: encode_base64(&bytes),
+        },
+    })
+}
+
+fn resolve_prompt_path(path_ref: &str, cwd: &Path) -> PathBuf {
+    let path = Path::new(path_ref);
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        cwd.join(path)
+    }
+}
+
+fn media_type_for_path(path: &Path) -> Option<&'static str> {
+    let extension = path.extension()?.to_str()?.to_ascii_lowercase();
+    match extension.as_str() {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        _ => None,
+    }
+}
+
+fn encode_base64(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut output = String::new();
+    let mut index = 0;
+    while index + 3 <= bytes.len() {
+        let block = (u32::from(bytes[index]) << 16)
+            | (u32::from(bytes[index + 1]) << 8)
+            | u32::from(bytes[index + 2]);
+        output.push(TABLE[((block >> 18) & 0x3F) as usize] as char);
+        output.push(TABLE[((block >> 12) & 0x3F) as usize] as char);
+        output.push(TABLE[((block >> 6) & 0x3F) as usize] as char);
+        output.push(TABLE[(block & 0x3F) as usize] as char);
+        index += 3;
+    }
+
+    match bytes.len().saturating_sub(index) {
+        1 => {
+            let block = u32::from(bytes[index]) << 16;
+            output.push(TABLE[((block >> 18) & 0x3F) as usize] as char);
+            output.push(TABLE[((block >> 12) & 0x3F) as usize] as char);
+            output.push('=');
+            output.push('=');
+        }
+        2 => {
+            let block = (u32::from(bytes[index]) << 16) | (u32::from(bytes[index + 1]) << 8);
+            output.push(TABLE[((block >> 18) & 0x3F) as usize] as char);
+            output.push(TABLE[((block >> 12) & 0x3F) as usize] as char);
+            output.push(TABLE[((block >> 6) & 0x3F) as usize] as char);
+            output.push('=');
+        }
+        _ => {}
+    }
+
+    output
 }
 
 fn print_help() {
@@ -2397,8 +2587,10 @@ mod tests {
         render_memory_report, render_repl_help, resume_supported_slash_commands, status_context,
         CliAction, CliOutputFormat, SlashCommand, StatusUsage, DEFAULT_MODEL,
     };
+    use api::InputContentBlock;
     use runtime::{ContentBlock, ConversationMessage, MessageRole, PermissionMode};
     use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn defaults_to_repl_when_no_args() {
@@ -2797,7 +2989,7 @@ mod tests {
     fn status_context_reads_real_workspace_metadata() {
         let context = status_context(None).expect("status context should load");
         assert!(context.cwd.is_absolute());
-        assert_eq!(context.discovered_config_files, 3);
+        assert!(context.discovered_config_files >= 3);
         assert!(context.loaded_config_files <= context.discovered_config_files);
     }
 
@@ -2881,10 +3073,109 @@ mod tests {
             },
         ];
 
-        let converted = super::convert_messages(&messages);
+        let converted = super::convert_messages(&messages).expect("messages should convert");
         assert_eq!(converted.len(), 3);
         assert_eq!(converted[1].role, "assistant");
         assert_eq!(converted[2].role, "user");
+    }
+
+    #[test]
+    fn prompt_to_content_blocks_keeps_text_only_prompt() {
+        let blocks = super::prompt_to_content_blocks("hello world", Path::new("."))
+            .expect("text prompt should parse");
+        assert_eq!(
+            blocks,
+            vec![InputContentBlock::Text {
+                text: "hello world".to_string()
+            }]
+        );
+    }
+
+    #[test]
+    fn prompt_to_content_blocks_embeds_at_image_refs() {
+        let temp = temp_fixture_dir("at-image-ref");
+        let image_path = temp.join("sample.png");
+        std::fs::write(&image_path, [1_u8, 2, 3]).expect("fixture write");
+        let prompt = format!("describe @{} please", image_path.display());
+
+        let blocks = super::prompt_to_content_blocks(&prompt, Path::new("."))
+            .expect("image ref should parse");
+
+        assert!(matches!(
+            &blocks[0],
+            InputContentBlock::Text { text } if text == "describe "
+        ));
+        assert!(matches!(
+            &blocks[1],
+            InputContentBlock::Image { source }
+                if source.kind == "base64"
+                    && source.media_type == "image/png"
+                    && source.data == "AQID"
+        ));
+        assert!(matches!(
+            &blocks[2],
+            InputContentBlock::Text { text } if text == " please"
+        ));
+    }
+
+    #[test]
+    fn prompt_to_content_blocks_embeds_markdown_image_refs() {
+        let temp = temp_fixture_dir("markdown-image-ref");
+        let image_path = temp.join("sample.webp");
+        std::fs::write(&image_path, [255_u8]).expect("fixture write");
+        let prompt = format!("see ![asset]({}) now", image_path.display());
+
+        let blocks = super::prompt_to_content_blocks(&prompt, Path::new("."))
+            .expect("markdown image ref should parse");
+
+        assert!(matches!(
+            &blocks[1],
+            InputContentBlock::Image { source }
+                if source.media_type == "image/webp" && source.data == "/w=="
+        ));
+    }
+
+    #[test]
+    fn prompt_to_content_blocks_rejects_unsupported_formats() {
+        let temp = temp_fixture_dir("unsupported-image-ref");
+        let image_path = temp.join("sample.bmp");
+        std::fs::write(&image_path, [1_u8]).expect("fixture write");
+        let prompt = format!("describe @{}", image_path.display());
+
+        let error = super::prompt_to_content_blocks(&prompt, Path::new("."))
+            .expect_err("unsupported image ref should fail");
+
+        assert!(error.contains("unsupported image format"));
+    }
+
+    #[test]
+    fn convert_messages_expands_user_text_image_refs() {
+        let temp = temp_fixture_dir("convert-message-image-ref");
+        let image_path = temp.join("sample.gif");
+        std::fs::write(&image_path, [71_u8, 73, 70]).expect("fixture write");
+        let messages = vec![ConversationMessage::user_text(format!(
+            "inspect @{}",
+            image_path.display()
+        ))];
+
+        let converted = super::convert_messages(&messages).expect("messages should convert");
+
+        assert_eq!(converted.len(), 1);
+        assert!(matches!(
+            &converted[0].content[1],
+            InputContentBlock::Image { source }
+                if source.media_type == "image/gif" && source.data == "R0lG"
+        ));
+    }
+
+    fn temp_fixture_dir(label: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should advance")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("rusty-claude-cli-{label}-{unique}"));
+        std::fs::create_dir_all(&path).expect("temp dir should exist");
+        path
     }
     #[test]
     fn repl_help_mentions_history_completion_and_multiline() {

@@ -4,7 +4,7 @@ import type { AppSettings } from "../../../../shared/contracts/index.js";
 
 type SettingsPageProps = {
   settings: AppSettings;
-  onSave: (settings: AppSettings) => Promise<void>;
+  onSave: (settings: AppSettings) => Promise<AppSettings>;
   saveMessage: string | null;
   saveError: string | null;
 };
@@ -20,7 +20,8 @@ export function SettingsPage({ settings, onSave, saveMessage, saveError }: Setti
   const handleSave = async () => {
     setSaving(true);
     try {
-      await onSave(draft);
+      const saved = await onSave(draft);
+      setDraft(saved);
     } finally {
       setSaving(false);
     }

@@ -63,7 +63,7 @@ export function App() {
   const runLogCount = logs.length;
   const latestLogAt = logs.at(-1)?.ts;
 
-  const handleSaveSettings = async (nextSettings: AppSettings) => {
+  const handleSaveSettings = async (nextSettings: AppSettings): Promise<AppSettings> => {
     setSaveError(null);
     const normalizedSettings: AppSettings = {
       ...nextSettings,
@@ -74,9 +74,11 @@ export function App() {
       setSettings(saved);
       setSaveMessage("Settings saved.");
       window.setTimeout(() => setSaveMessage(null), 2500);
+      return saved;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setSaveError(message);
+      throw error;
     }
   };
 

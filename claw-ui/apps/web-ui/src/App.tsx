@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { AppSettings } from "../../../shared/contracts/index.js";
 import { getHealth, getSettings, saveSettings, startRun, stopRun } from "./api/client.js";
+import { StatusBadge } from "./components/status-badge.js";
 import { Tabs } from "./components/tabs.js";
 import { useRunPolling } from "./hooks/use-run-polling.js";
 import { LogsPage } from "./pages/logs-page.js";
@@ -58,6 +59,9 @@ export function App() {
   const finalOutput = status?.finalOutput;
   const canStop = status?.status === "starting" || status?.status === "running";
   const runPageStatus = runLaunchError ? "start-failed" : status?.status ?? "idle";
+  const hasActiveRun = Boolean(runId && status);
+  const runLogCount = logs.length;
+  const latestLogAt = logs.at(-1)?.ts;
 
   const handleSaveSettings = async (nextSettings: AppSettings) => {
     setSaveError(null);
@@ -121,6 +125,29 @@ export function App() {
 
       <Tabs current={currentTab} onChange={setCurrentTab} />
 
+      {hasActiveRun ? (
+        <section className="run-summary-bar" aria-label="Current run summary">
+          <div className="run-summary-copy">
+            <span className="eyebrow">Current Run</span>
+            <strong>{runId}</strong>
+            <div className="run-summary-meta">
+              <StatusBadge status={runPageStatus} />
+              <span>{runLogCount} log lines</span>
+              <span>Started {formatDateTime(status?.startedAt)}</span>
+              <span>Latest activity {formatDateTime(latestLogAt)}</span>
+            </div>
+          </div>
+          <div className="run-summary-actions">
+            <button className="secondary-button" onClick={() => setCurrentTab("run")} type="button">
+              Open Run
+            </button>
+            <button className="secondary-button" onClick={() => setCurrentTab("logs")} type="button">
+              Open Logs
+            </button>
+          </div>
+        </section>
+      ) : null}
+
       {settingsError ? <p className="message error">{settingsError}</p> : null}
       {currentTab === "run" ? (
         <RunPage
@@ -137,6 +164,10 @@ export function App() {
           finishedAt={status?.finishedAt}
           errorMessage={runLaunchError ?? status?.errorMessage ?? null}
           finalOutput={finalOutput}
+          logCount={runLogCount}
+          latestLogAt={latestLogAt}
+          onOpenLogs={() => setCurrentTab("logs")}
+          onOpenSettings={() => setCurrentTab("settings")}
         />
       ) : null}
 
@@ -156,4 +187,20 @@ export function App() {
       {!settingsLoaded ? <p className="hint">Loading settings...</p> : null}
     </main>
   );
+}
+
+function formatDateTime(value?: string): string {
+  if (!value) {
+    return "-";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(parsed);
 }

@@ -16,6 +16,10 @@ type RunPageProps = {
   finishedAt?: string;
   errorMessage?: string | null;
   finalOutput?: string;
+  logCount: number;
+  latestLogAt?: string;
+  onOpenLogs: () => void;
+  onOpenSettings: () => void;
 };
 
 export function RunPage({
@@ -32,12 +36,36 @@ export function RunPage({
   finishedAt,
   errorMessage,
   finalOutput,
+  logCount,
+  latestLogAt,
+  onOpenLogs,
+  onOpenSettings,
 }: RunPageProps) {
+  const promptLength = prompt.trim().length;
+
   return (
     <section className="panel">
-      <h2>Run</h2>
+      <div className="panel-heading">
+        <div>
+          <h2>Run</h2>
+          <p className="hint">
+            Start and stop a local-api owned run. Detailed process output remains in Logs.
+          </p>
+        </div>
+        <div className="panel-actions">
+          <button className="secondary-button" onClick={onOpenSettings} type="button">
+            Review Settings
+          </button>
+          <button className="secondary-button" onClick={onOpenLogs} type="button">
+            Open Logs
+          </button>
+        </div>
+      </div>
       <label className="field">
-        <span>Prompt</span>
+        <span className="field-label">
+          <span>Prompt</span>
+          <span className="hint">{promptLength} characters</span>
+        </span>
         <textarea
           rows={8}
           value={prompt}
@@ -49,9 +77,14 @@ export function RunPage({
         <button onClick={() => void onRun()} disabled={running || !prompt.trim()} type="button">
           {running ? "Running..." : "Run"}
         </button>
-        <button onClick={() => void onStop()} disabled={!canStop} type="button">
+        <button className="danger-button" onClick={() => void onStop()} disabled={!canStop} type="button">
           Stop
         </button>
+      </div>
+      <div className="callout">
+        <h3>Operator Notes</h3>
+        <p>Saved local-api settings are authoritative for bridged execution fields on runs started here.</p>
+        <p>Use Logs to inspect stdout, stderr, and stop behavior while the run is active.</p>
       </div>
       <dl className="details">
         <div>
@@ -67,11 +100,19 @@ export function RunPage({
         </div>
         <div>
           <dt>Started</dt>
-          <dd>{startedAt ?? "-"}</dd>
+          <dd>{formatDateTime(startedAt)}</dd>
         </div>
         <div>
           <dt>Finished</dt>
-          <dd>{finishedAt ?? "-"}</dd>
+          <dd>{formatDateTime(finishedAt)}</dd>
+        </div>
+        <div>
+          <dt>Log Lines</dt>
+          <dd>{logCount}</dd>
+        </div>
+        <div>
+          <dt>Latest Activity</dt>
+          <dd>{formatDateTime(latestLogAt)}</dd>
         </div>
       </dl>
       {errorMessage ? (
@@ -87,4 +128,20 @@ export function RunPage({
       </div>
     </section>
   );
+}
+
+function formatDateTime(value?: string): string {
+  if (!value) {
+    return "-";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(parsed);
 }

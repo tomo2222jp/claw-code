@@ -222,6 +222,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 None
             };
             let effective_prompt = merge_prompt_with_stdin(&prompt, stdin_context.as_deref());
+            let model = resolve_repl_model(model);
+            emit_cli_active_model_trace("prompt", &model);
             LiveCli::new(model, true, allowed_tools, permission_mode)?.run_turn_with_output(
                 &effective_prompt,
                 output_format,
@@ -962,7 +964,7 @@ fn config_permission_mode_for_current_dir() -> Option<PermissionMode> {
 fn config_model_for_current_dir() -> Option<String> {
     let cwd = env::current_dir().ok()?;
     let loader = ConfigLoader::default_for(&cwd);
-    loader.load().ok()?.model().map(ToOwned::to_owned)
+    loader.load().ok()?.resolved_model().map(ToOwned::to_owned)
 }
 
 fn resolve_repl_model(cli_model: String) -> String {
@@ -988,6 +990,29 @@ fn provider_label(kind: ProviderKind) -> &'static str {
         ProviderKind::Xai => "xai",
         ProviderKind::OpenAi => "openai",
     }
+}
+
+fn active_model_trace_config() -> (u32, Option<String>) {
+    let Some(cwd) = env::current_dir().ok() else {
+        return (0, None);
+    };
+    let loader = ConfigLoader::default_for(&cwd);
+    let Some(config) = loader.load().ok() else {
+        return (0, None);
+    };
+    (
+        config.retry_count(),
+        config.active_provider().map(ToOwned::to_owned),
+    )
+}
+
+fn emit_cli_active_model_trace(kind: &str, model: &str) {
+    let (retry_count, active_provider) = active_model_trace_config();
+    let selected_provider = provider_label(detect_provider_kind(model));
+    let provider_intent = active_provider.unwrap_or_else(|| String::from("<unset>"));
+    eprintln!(
+        "[active-model] kind={kind} selected_provider={selected_provider} selected_model={model} retry_count={retry_count} retries_used=0 provider_intent={provider_intent}"
+    );
 }
 
 fn format_connected_line(model: &str) -> String {
@@ -1549,7 +1574,7 @@ fn check_config_health(
                 loaded_entries.len(),
                 discovered_count
             )];
-            if let Some(model) = runtime_config.model() {
+            if let Some(model) = runtime_config.resolved_model() {
                 details.push(format!("Resolved model    {model}"));
             }
             details.push(format!(
@@ -1589,7 +1614,10 @@ fn check_config_health(
                     "loaded_config_files".to_string(),
                     json!(loaded_entries.len()),
                 ),
-                ("resolved_model".to_string(), json!(runtime_config.model())),
+                (
+                    "resolved_model".to_string(),
+                    json!(runtime_config.resolved_model()),
+                ),
                 (
                     "mcp_servers".to_string(),
                     json!(runtime_config.mcp().servers().len()),
@@ -1759,7 +1787,7 @@ fn check_sandbox_health(status: &runtime::SandboxStatus) -> DiagnosticCheck {
 }
 
 fn check_system_health(cwd: &Path, config: Option<&runtime::RuntimeConfig>) -> DiagnosticCheck {
-    let default_model = config.and_then(runtime::RuntimeConfig::model);
+    let default_model = config.and_then(runtime::RuntimeConfig::resolved_model);
     let mut details = vec![
         format!("OS               {} {}", env::consts::OS, env::consts::ARCH),
         format!("Working dir      {}", cwd.display()),
@@ -2765,6 +2793,7 @@ fn run_repl(
 ) -> Result<(), Box<dyn std::error::Error>> {
     run_stale_base_preflight(base_commit.as_deref());
     let resolved_model = resolve_repl_model(model);
+    emit_cli_active_model_trace("repl", &resolved_model);
     let mut cli = LiveCli::new(resolved_model, true, allowed_tools, permission_mode)?;
     let mut editor =
         input::LineEditor::new("> ", cli.repl_completion_candidates().unwrap_or_default());
@@ -6250,6 +6279,7 @@ fn build_runtime_with_plugin_state(
         AnthropicRuntimeClient::new(
             session_id,
             model,
+            feature_config.retry_count(),
             enable_tools,
             emit_output,
             allowed_tools.clone(),
@@ -6365,6 +6395,7 @@ struct AnthropicRuntimeClient {
     client: ApiProviderClient,
     session_id: String,
     model: String,
+    retry_count: u32,
     enable_tools: bool,
     emit_output: bool,
     allowed_tools: Option<AllowedToolSet>,
@@ -6376,6 +6407,7 @@ impl AnthropicRuntimeClient {
     fn new(
         session_id: &str,
         model: String,
+        retry_count: u32,
         enable_tools: bool,
         emit_output: bool,
         allowed_tools: Option<AllowedToolSet>,
@@ -6429,6 +6461,7 @@ impl AnthropicRuntimeClient {
             client,
             session_id: session_id.to_string(),
             model,
+            retry_count,
             enable_tools,
             emit_output,
             allowed_tools,
@@ -6496,7 +6529,15 @@ impl ApiClient for AnthropicRuntimeClient {
                     .consume_stream(&message_request, is_post_tool && attempt == 1)
                     .await;
                 match result {
-                    Ok(events) => return Ok(events),
+                    Ok(events) => {
+                        eprintln!(
+                            "[active-model] kind=cli-turn selected_provider={} selected_model={} retry_count={} retries_used=0",
+                            provider_label(detect_provider_kind(&self.model)),
+                            self.model,
+                            self.retry_count
+                        );
+                        return Ok(events);
+                    }
                     Err(error)
                         if error.to_string().contains("post-tool stall")
                             && attempt < max_attempts =>

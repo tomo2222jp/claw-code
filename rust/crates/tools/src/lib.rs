@@ -4,9 +4,10 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use api::{
-    max_tokens_for_model, resolve_model_alias, ApiError, ContentBlockDelta, InputContentBlock,
-    InputMessage, MessageRequest, MessageResponse, OutputContentBlock, ProviderClient,
-    StreamEvent as ApiStreamEvent, ToolChoice, ToolDefinition, ToolResultContentBlock,
+    detect_provider_kind, max_tokens_for_model, resolve_model_alias, ApiError, ContentBlockDelta,
+    InputContentBlock, InputMessage, MessageRequest, MessageResponse, OutputContentBlock,
+    ProviderClient, ProviderKind, StreamEvent as ApiStreamEvent, ToolChoice, ToolDefinition,
+    ToolResultContentBlock,
 };
 use plugins::PluginTool;
 use reqwest::blocking::Client;
@@ -3411,6 +3412,14 @@ fn build_agent_runtime(
         .model
         .clone()
         .unwrap_or_else(|| DEFAULT_AGENT_MODEL.to_string());
+    let kind = format!(
+        "subagent:{}",
+        job.manifest
+            .subagent_type
+            .as_deref()
+            .unwrap_or("default")
+    );
+    emit_tools_active_model_trace(&kind, &model);
     let allowed_tools = job.allowed_tools.clone();
     let api_client = ProviderRuntimeClient::new(model, allowed_tools.clone())?;
     let permission_policy = agent_permission_policy();
@@ -3441,11 +3450,45 @@ fn build_agent_system_prompt(subagent_type: &str) -> Result<Vec<String>, String>
 }
 
 fn resolve_agent_model(model: Option<&str>) -> String {
-    model
-        .map(str::trim)
-        .filter(|model| !model.is_empty())
-        .unwrap_or(DEFAULT_AGENT_MODEL)
-        .to_string()
+    if let Some(model) = model.map(str::trim).filter(|model| !model.is_empty()) {
+        return model.to_string();
+    }
+    std::env::current_dir()
+        .ok()
+        .and_then(|cwd| ConfigLoader::default_for(cwd).load().ok())
+        .and_then(|config| config.resolved_model().map(str::to_string))
+        .unwrap_or_else(|| DEFAULT_AGENT_MODEL.to_string())
+}
+
+fn provider_label(kind: ProviderKind) -> &'static str {
+    match kind {
+        ProviderKind::Anthropic => "anthropic",
+        ProviderKind::Xai => "xai",
+        ProviderKind::OpenAi => "openai",
+    }
+}
+
+fn active_model_trace_config() -> (u32, Option<String>) {
+    let Some(cwd) = std::env::current_dir().ok() else {
+        return (0, None);
+    };
+    let loader = ConfigLoader::default_for(&cwd);
+    let Some(config) = loader.load().ok() else {
+        return (0, None);
+    };
+    (
+        config.retry_count(),
+        config.active_provider().map(str::to_string),
+    )
+}
+
+fn emit_tools_active_model_trace(kind: &str, model: &str) {
+    let (retry_count, active_provider) = active_model_trace_config();
+    let selected_provider = provider_label(detect_provider_kind(model));
+    let provider_intent = active_provider.unwrap_or_else(|| String::from("<unset>"));
+    eprintln!(
+        "[active-model] kind={kind} selected_provider={selected_provider} selected_model={model} retry_count={retry_count} retries_used=0 provider_intent={provider_intent}"
+    );
 }
 
 fn allowed_tools_for_subagent(subagent_type: &str) -> BTreeSet<String> {
@@ -3754,13 +3797,23 @@ struct ProviderRuntimeClient {
     runtime: tokio::runtime::Runtime,
     chain: Vec<ProviderEntry>,
     allowed_tools: BTreeSet<String>,
+    // Retries against the same resolved active model before any legacy fallback-chain step.
+    retry_count: u32,
 }
 
 impl ProviderRuntimeClient {
     #[allow(clippy::needless_pass_by_value)]
     fn new(model: String, allowed_tools: BTreeSet<String>) -> Result<Self, String> {
         let fallback_config = load_provider_fallback_config();
-        Self::new_with_fallback_config(model, allowed_tools, &fallback_config)
+        let retry_count = load_retry_count();
+        let use_fallback_chain = should_use_provider_fallback_chain();
+        Self::new_with_fallback_config(
+            model,
+            allowed_tools,
+            &fallback_config,
+            retry_count,
+            use_fallback_chain,
+        )
     }
 
     #[allow(clippy::needless_pass_by_value)]
@@ -3768,6 +3821,8 @@ impl ProviderRuntimeClient {
         model: String,
         allowed_tools: BTreeSet<String>,
         fallback_config: &ProviderFallbackConfig,
+        retry_count: u32,
+        use_fallback_chain: bool,
     ) -> Result<Self, String> {
         let primary_model = fallback_config
             .primary()
@@ -3775,13 +3830,15 @@ impl ProviderRuntimeClient {
             .unwrap_or(model);
         let primary = build_provider_entry(&primary_model)?;
         let mut chain = vec![primary];
-        for fallback_model in fallback_config.fallbacks() {
-            match build_provider_entry(fallback_model) {
-                Ok(entry) => chain.push(entry),
-                Err(error) => {
-                    eprintln!(
-                        "warning: skipping unavailable fallback provider {fallback_model}: {error}"
-                    );
+        if use_fallback_chain {
+            for fallback_model in fallback_config.fallbacks() {
+                match build_provider_entry(fallback_model) {
+                    Ok(entry) => chain.push(entry),
+                    Err(error) => {
+                        eprintln!(
+                            "warning: skipping unavailable fallback provider {fallback_model}: {error}"
+                        );
+                    }
                 }
             }
         }
@@ -3789,6 +3846,7 @@ impl ProviderRuntimeClient {
             runtime: tokio::runtime::Runtime::new().map_err(|error| error.to_string())?,
             chain,
             allowed_tools,
+            retry_count,
         })
     }
 }
@@ -3811,6 +3869,23 @@ fn load_provider_fallback_config() -> ProviderFallbackConfig {
         })
 }
 
+fn load_retry_count() -> u32 {
+    std::env::current_dir()
+        .ok()
+        .and_then(|cwd| ConfigLoader::default_for(cwd).load().ok())
+        .map_or(0, |config| config.retry_count())
+}
+
+// The new active-model flow intentionally keeps execution on one resolved model.
+// Legacy `providerFallbacks` stays enabled only when `active_model` is not configured,
+// so reserved `fallback_provider` / `fallback_model` do not affect runtime behavior yet.
+fn should_use_provider_fallback_chain() -> bool {
+    std::env::current_dir()
+        .ok()
+        .and_then(|cwd| ConfigLoader::default_for(cwd).load().ok())
+        .is_none_or(|config| !config.has_active_model())
+}
+
 impl ApiClient for ProviderRuntimeClient {
     fn stream(&mut self, request: ApiRequest) -> Result<Vec<AssistantEvent>, RuntimeError> {
         let tools = tool_specs_for_allowed_tools(Some(&self.allowed_tools))
@@ -3829,33 +3904,75 @@ impl ApiClient for ProviderRuntimeClient {
         let runtime = &self.runtime;
         let chain = &self.chain;
         let mut last_error: Option<ApiError> = None;
+        let mut retries_used: u32 = 0;
         for (index, entry) in chain.iter().enumerate() {
-            let message_request = MessageRequest {
-                model: entry.model.clone(),
-                max_tokens: max_tokens_for_model(&entry.model),
-                messages: messages.clone(),
-                system: system.clone(),
-                tools: (!tools.is_empty()).then(|| tools.clone()),
-                tool_choice: tool_choice.clone(),
-                stream: true,
-                ..Default::default()
-            };
+            for attempt_index in 0..=self.retry_count {
+                let message_request = MessageRequest {
+                    model: entry.model.clone(),
+                    max_tokens: max_tokens_for_model(&entry.model),
+                    messages: messages.clone(),
+                    system: system.clone(),
+                    tools: (!tools.is_empty()).then(|| tools.clone()),
+                    tool_choice: tool_choice.clone(),
+                    stream: true,
+                    ..Default::default()
+                };
 
-            let attempt = runtime.block_on(stream_with_provider(&entry.client, &message_request));
-            match attempt {
-                Ok(events) => return Ok(events),
-                Err(error) if error.is_retryable() && index + 1 < chain.len() => {
-                    eprintln!(
-                        "provider {} failed with retryable error, falling back: {error}",
-                        entry.model
-                    );
-                    last_error = Some(error);
-                    continue;
+                let attempt =
+                    runtime.block_on(stream_with_provider(&entry.client, &message_request));
+                match attempt {
+                    Ok(events) => {
+                        eprintln!(
+                            "[active-model] kind=tools-runtime selected_provider={} selected_model={} retry_count={} retries_used={}",
+                            provider_label(detect_provider_kind(&entry.model)),
+                            entry.model,
+                            self.retry_count,
+                            retries_used
+                        );
+                        return Ok(events);
+                    }
+                    Err(error) if error.is_retryable() && attempt_index < self.retry_count => {
+                        retries_used += 1;
+                        eprintln!(
+                            "provider {} failed with retryable error, retrying active model attempt {}/{}: {error}",
+                            entry.model,
+                            attempt_index + 1,
+                            self.retry_count + 1
+                        );
+                        last_error = Some(error);
+                        continue;
+                    }
+                    Err(error) if error.is_retryable() && index + 1 < chain.len() => {
+                        eprintln!(
+                            "provider {} failed with retryable error, falling back: {error}",
+                            entry.model
+                        );
+                        last_error = Some(error);
+                        break;
+                    }
+                    Err(error) => {
+                        eprintln!(
+                            "[active-model] kind=tools-runtime selected_provider={} selected_model={} retry_count={} retries_used={}",
+                            provider_label(detect_provider_kind(&entry.model)),
+                            entry.model,
+                            self.retry_count,
+                            retries_used
+                        );
+                        return Err(RuntimeError::new(error.to_string()));
+                    }
                 }
-                Err(error) => return Err(RuntimeError::new(error.to_string())),
             }
         }
 
+        if let Some(entry) = chain.last() {
+            eprintln!(
+                "[active-model] kind=tools-runtime selected_provider={} selected_model={} retry_count={} retries_used={}",
+                provider_label(detect_provider_kind(&entry.model)),
+                entry.model,
+                self.retry_count,
+                retries_used
+            );
+        }
         Err(RuntimeError::new(
             last_error
                 .map(|error| error.to_string())
@@ -8340,6 +8457,8 @@ printf 'pwsh:%s' "$1"
             "claude-sonnet-4-6".to_string(),
             BTreeSet::new(),
             &fallback_config,
+            0,
+            true,
         )
         .expect("primary-only chain should construct");
 
@@ -8373,6 +8492,8 @@ printf 'pwsh:%s' "$1"
             "claude-sonnet-4-6".to_string(),
             BTreeSet::new(),
             &fallback_config,
+            0,
+            true,
         )
         .expect("chain with fallbacks should construct");
 
@@ -8412,6 +8533,8 @@ printf 'pwsh:%s' "$1"
             "claude-haiku-4-5-20251213".to_string(),
             BTreeSet::new(),
             &fallback_config,
+            0,
+            true,
         )
         .expect("chain with primary override should construct");
 
@@ -8453,6 +8576,8 @@ printf 'pwsh:%s' "$1"
             "claude-sonnet-4-6".to_string(),
             BTreeSet::new(),
             &fallback_config,
+            0,
+            true,
         )
         .expect("chain construction should not fail when only some fallbacks are unavailable");
 

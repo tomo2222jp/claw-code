@@ -232,6 +232,71 @@ You can add custom aliases in any settings file (`~/.claw/settings.json`, `.claw
 
 Local project settings override user-level settings. Aliases resolve through the built-in table, so `"fast": "haiku"` also works.
 
+### Active model config
+
+The Rust runtime also supports a single active-model default in settings files (`~/.claw/settings.json`, `.claw/settings.json`, or `.claw/settings.local.json`):
+
+```json
+{
+  "active_provider": "openrouter",
+  "active_model": "openai/qwen/qwen-max",
+  "fallback_provider": "openai",
+  "fallback_model": "gpt-4.1-mini",
+  "retry_count": 2
+}
+```
+
+Current meaning of these fields:
+
+- `active_model`: the default single active model used when you do not explicitly pass `--model` or switch models in-session
+- `retry_count`: retry count against the same resolved active model
+- `active_provider`: stored as provider intent for config clarity and diagnostics
+  `openrouter` is the recommended provider intent when using OpenRouter-backed active-model config
+- `fallback_provider` / `fallback_model`: reserved for future use and currently unused by the Rust execution flow
+
+Current limitations:
+
+- role-based model routing is not implemented in the Rust runtime yet
+- `gemini` is not yet supported in the Rust runtime; setting `active_provider` to `gemini` currently fails with an explicit config-load error
+- `openrouter` is accepted as provider intent, but the actual execution path still uses the existing OpenAI-compatible client
+- `selected_provider` in logs may still read `openai` while `provider_intent=openrouter`, because OpenRouter uses the OpenAI-compatible transport
+- if you want to run Qwen through OpenRouter, set `active_model` to the OpenRouter model ID you want to send
+
+Minimal OpenRouter Qwen example:
+
+```json
+{
+  "active_provider": "openrouter",
+  "active_model": "openai/qwen/qwen-max",
+  "retry_count": 1
+}
+```
+
+Then run:
+
+```bash
+export OPENAI_API_KEY="sk-or-v1-..."
+export OPENAI_BASE_URL="https://openrouter.ai/api/v1"
+
+cd rust
+./target/debug/claw prompt "hello"
+```
+
+Current builds also emit short stderr traces like:
+
+```text
+[active-model] kind=prompt selected_provider=openai selected_model=openai/qwen/qwen-max retry_count=1 retries_used=0 provider_intent=openrouter
+```
+
+Fields in that trace:
+
+- `selected_provider`: provider actually selected from the resolved model string
+- `selected_model`: model actually used
+- `retry_count`: configured same-model retry budget
+- `retries_used`: how many same-model retries were consumed
+- `provider_intent`: value from `active_provider`
+- `kind`: coarse execution kind such as `prompt`, `repl`, `cli-turn`, `subagent:<type>`, or `tools-runtime`
+
 ### How provider detection works
 
 1. If the resolved model name starts with `claude` → Anthropic.

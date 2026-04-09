@@ -150,6 +150,26 @@ const TOP_LEVEL_FIELDS: &[FieldSpec] = &[
         expected: FieldType::String,
     },
     FieldSpec {
+        name: "active_provider",
+        expected: FieldType::String,
+    },
+    FieldSpec {
+        name: "active_model",
+        expected: FieldType::String,
+    },
+    FieldSpec {
+        name: "fallback_provider",
+        expected: FieldType::String,
+    },
+    FieldSpec {
+        name: "fallback_model",
+        expected: FieldType::String,
+    },
+    FieldSpec {
+        name: "retry_count",
+        expected: FieldType::Number,
+    },
+    FieldSpec {
         name: "hooks",
         expected: FieldType::Object,
     },

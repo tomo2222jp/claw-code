@@ -8,6 +8,8 @@ use crate::sandbox::{FilesystemIsolationMode, SandboxConfig};
 
 /// Schema name advertised by generated settings files.
 pub const CLAW_SETTINGS_SCHEMA_NAME: &str = "SettingsSchema";
+const ACTIVE_PROVIDER_OVERRIDE_ENV_VAR: &str = "CLAW_ACTIVE_PROVIDER_OVERRIDE";
+const RETRY_COUNT_OVERRIDE_ENV_VAR: &str = "CLAW_RETRY_COUNT_OVERRIDE";
 
 /// Origin of a loaded settings file in the configuration precedence chain.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -51,6 +53,27 @@ pub struct RuntimePluginConfig {
     max_output_tokens: Option<u32>,
 }
 
+/// Active-model settings used to keep single-model resolution centralized.
+///
+/// Current semantics for this pass:
+/// - `active_model` is the only new field that participates in resolved-model selection
+/// - `active_provider` is validated and stored for explicit provider intent, but does not
+///   independently route execution without a matching model string
+/// - `openrouter` is accepted here as provider intent for OpenAI-compatible routing, but still
+///   executes through the existing OpenAI-compatible provider path
+/// - `fallback_provider` / `fallback_model` are reserved for a future provider-aware fallback
+///   flow and are intentionally not consulted by the current execution path
+/// - `retry_count` means retries against the same resolved active model before any legacy
+///   fallback-chain step
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ActiveModelConfig {
+    active_provider: Option<String>,
+    active_model: Option<String>,
+    fallback_provider: Option<String>,
+    fallback_model: Option<String>,
+    retry_count: Option<u32>,
+}
+
 /// Structured feature configuration consumed by runtime subsystems.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RuntimeFeatureConfig {
@@ -58,6 +81,7 @@ pub struct RuntimeFeatureConfig {
     plugins: RuntimePluginConfig,
     mcp: McpConfigCollection,
     oauth: Option<OAuthConfig>,
+    active_model: ActiveModelConfig,
     model: Option<String>,
     aliases: BTreeMap<String, String>,
     permission_mode: Option<ResolvedPermissionMode>,
@@ -308,6 +332,7 @@ impl ConfigLoader {
                 servers: mcp_servers,
             },
             oauth: parse_optional_oauth_config(&merged_value, "merged settings.oauth")?,
+            active_model: parse_optional_active_model_config(&merged_value)?,
             model: parse_optional_model(&merged_value),
             aliases: parse_optional_aliases(&merged_value)?,
             permission_mode: parse_optional_permission_mode(&merged_value)?,
@@ -381,6 +406,47 @@ impl RuntimeConfig {
     }
 
     #[must_use]
+    pub fn active_provider(&self) -> Option<&str> {
+        self.feature_config.active_provider()
+    }
+
+    #[must_use]
+    pub fn active_model_name(&self) -> Option<&str> {
+        self.feature_config.active_model_name()
+    }
+
+    #[must_use]
+    pub fn fallback_provider(&self) -> Option<&str> {
+        self.feature_config.fallback_provider()
+    }
+
+    #[must_use]
+    pub fn fallback_model(&self) -> Option<&str> {
+        self.feature_config.fallback_model()
+    }
+
+    #[must_use]
+    pub fn retry_count(&self) -> u32 {
+        self.feature_config.retry_count()
+    }
+
+    #[must_use]
+    pub fn has_active_model(&self) -> bool {
+        self.feature_config.has_active_model()
+    }
+
+    #[must_use]
+    /// Resolve only the single active model default for this config.
+    ///
+    /// This accessor intentionally does not decide CLI precedence, provider routing,
+    /// or fallback-chain behavior. It only answers:
+    /// - `active_model` when present
+    /// - otherwise legacy `model`
+    pub fn resolved_model(&self) -> Option<&str> {
+        self.feature_config.resolved_model()
+    }
+
+    #[must_use]
     pub fn model(&self) -> Option<&str> {
         self.feature_config.model.as_deref()
     }
@@ -450,6 +516,49 @@ impl RuntimeFeatureConfig {
     }
 
     #[must_use]
+    pub fn active_provider(&self) -> Option<&str> {
+        self.active_model.active_provider()
+    }
+
+    #[must_use]
+    pub fn active_model_name(&self) -> Option<&str> {
+        self.active_model.active_model()
+    }
+
+    #[must_use]
+    pub fn fallback_provider(&self) -> Option<&str> {
+        self.active_model.fallback_provider()
+    }
+
+    #[must_use]
+    pub fn fallback_model(&self) -> Option<&str> {
+        self.active_model.fallback_model()
+    }
+
+    #[must_use]
+    pub fn retry_count(&self) -> u32 {
+        self.active_model.retry_count()
+    }
+
+    #[must_use]
+    pub fn has_active_model(&self) -> bool {
+        self.active_model.active_model().is_some()
+    }
+
+    #[must_use]
+    /// Resolve only the config-backed active model default.
+    ///
+    /// This remains scoped to model selection and deliberately excludes:
+    /// - explicit CLI `/model` or `--model` overrides
+    /// - provider dispatch details
+    /// - future fallback-provider selection
+    pub fn resolved_model(&self) -> Option<&str> {
+        self.active_model
+            .resolved_model()
+            .or(self.model.as_deref())
+    }
+
+    #[must_use]
     pub fn model(&self) -> Option<&str> {
         self.model.as_deref()
     }
@@ -482,6 +591,39 @@ impl RuntimeFeatureConfig {
     #[must_use]
     pub fn trusted_roots(&self) -> &[String] {
         &self.trusted_roots
+    }
+}
+
+impl ActiveModelConfig {
+    #[must_use]
+    pub fn active_provider(&self) -> Option<&str> {
+        self.active_provider.as_deref()
+    }
+
+    #[must_use]
+    pub fn active_model(&self) -> Option<&str> {
+        self.active_model.as_deref()
+    }
+
+    #[must_use]
+    pub fn fallback_provider(&self) -> Option<&str> {
+        self.fallback_provider.as_deref()
+    }
+
+    #[must_use]
+    pub fn fallback_model(&self) -> Option<&str> {
+        self.fallback_model.as_deref()
+    }
+
+    #[must_use]
+    pub fn retry_count(&self) -> u32 {
+        self.retry_count.unwrap_or(0)
+    }
+
+    #[must_use]
+    /// Return the configured active model only.
+    pub fn resolved_model(&self) -> Option<&str> {
+        self.active_model()
     }
 }
 
@@ -740,6 +882,55 @@ fn parse_optional_model(root: &JsonValue) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+fn parse_optional_active_model_config(root: &JsonValue) -> Result<ActiveModelConfig, ConfigError> {
+    let Some(object) = root.as_object() else {
+        return apply_active_model_env_overrides(ActiveModelConfig::default());
+    };
+    let active_provider = optional_string(object, "active_provider", "merged settings")?
+        .map(|provider| parse_runtime_provider(provider, "merged settings.active_provider"))
+        .transpose()?;
+    let fallback_provider = optional_string(object, "fallback_provider", "merged settings")?
+        .map(|provider| parse_runtime_provider(provider, "merged settings.fallback_provider"))
+        .transpose()?;
+    apply_active_model_env_overrides(ActiveModelConfig {
+        active_provider,
+        active_model: optional_string(object, "active_model", "merged settings")?
+            .map(str::to_string),
+        fallback_provider,
+        fallback_model: optional_string(object, "fallback_model", "merged settings")?
+            .map(str::to_string),
+        retry_count: optional_u32(object, "retry_count", "merged settings")?,
+    })
+}
+
+fn apply_active_model_env_overrides(
+    mut config: ActiveModelConfig,
+) -> Result<ActiveModelConfig, ConfigError> {
+    if let Some(provider) = std::env::var_os(ACTIVE_PROVIDER_OVERRIDE_ENV_VAR) {
+        let provider = provider.to_string_lossy();
+        if !provider.trim().is_empty() {
+            config.active_provider = Some(parse_runtime_provider(
+                &provider,
+                ACTIVE_PROVIDER_OVERRIDE_ENV_VAR,
+            )?);
+        }
+    }
+
+    if let Some(retry_count) = std::env::var_os(RETRY_COUNT_OVERRIDE_ENV_VAR) {
+        let retry_count = retry_count.to_string_lossy();
+        if !retry_count.trim().is_empty() {
+            let parsed = retry_count.trim().parse::<u32>().map_err(|_| {
+                ConfigError::Parse(format!(
+                    "{RETRY_COUNT_OVERRIDE_ENV_VAR}: expected a non-negative integer"
+                ))
+            })?;
+            config.retry_count = Some(parsed);
+        }
+    }
+
+    Ok(config)
+}
+
 fn parse_optional_aliases(root: &JsonValue) -> Result<BTreeMap<String, String>, ConfigError> {
     let Some(object) = root.as_object() else {
         return Ok(BTreeMap::new());
@@ -912,6 +1103,19 @@ fn parse_optional_trusted_roots(root: &JsonValue) -> Result<Vec<String>, ConfigE
         optional_string_array(object, "trustedRoots", "merged settings.trustedRoots")?
             .unwrap_or_default(),
     )
+}
+
+fn parse_runtime_provider(provider: &str, context: &str) -> Result<String, ConfigError> {
+    let normalized = provider.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "anthropic" | "xai" | "openai" | "openrouter" | "qwen" => Ok(normalized),
+        "gemini" => Err(ConfigError::Parse(format!(
+            "{context}: provider gemini is not yet supported in the Rust runtime"
+        ))),
+        other => Err(ConfigError::Parse(format!(
+            "{context}: unsupported provider {other}"
+        ))),
+    }
 }
 
 fn parse_filesystem_mode_label(value: &str) -> Result<FilesystemIsolationMode, ConfigError> {
@@ -1462,6 +1666,98 @@ mod tests {
         assert_eq!(chain.primary(), None);
         assert!(chain.fallbacks().is_empty());
         assert!(chain.is_empty());
+
+        fs::remove_dir_all(root).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn resolved_model_prefers_active_model_over_legacy_model() {
+        // given
+        let root = temp_dir();
+        let cwd = root.join("project");
+        let home = root.join("home").join(".claw");
+        fs::create_dir_all(&home).expect("home config dir");
+        fs::create_dir_all(&cwd).expect("project dir");
+        fs::write(
+            home.join("settings.json"),
+            r#"{
+              "active_provider": "openrouter",
+              "active_model": "openai/qwen/qwen-max",
+              "model": "claude-opus-4-6",
+              "retry_count": 2,
+              "fallback_provider": "openai",
+              "fallback_model": "gpt-4.1-mini"
+            }"#,
+        )
+        .expect("write settings");
+
+        // when
+        let loaded = ConfigLoader::new(&cwd, &home)
+            .load()
+            .expect("config should load");
+
+        // then
+        assert_eq!(loaded.active_provider(), Some("openrouter"));
+        assert_eq!(loaded.active_model_name(), Some("openai/qwen/qwen-max"));
+        assert_eq!(loaded.resolved_model(), Some("openai/qwen/qwen-max"));
+        assert_eq!(loaded.model(), Some("claude-opus-4-6"));
+        assert_eq!(loaded.retry_count(), 2);
+        assert_eq!(loaded.fallback_provider(), Some("openai"));
+        assert_eq!(loaded.fallback_model(), Some("gpt-4.1-mini"));
+
+        fs::remove_dir_all(root).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn accepts_openrouter_as_active_provider_intent() {
+        let root = temp_dir();
+        let cwd = root.join("project");
+        let home = root.join("home").join(".claw");
+        fs::create_dir_all(&home).expect("create config home");
+        fs::create_dir_all(&cwd).expect("project dir");
+        fs::write(
+            home.join("settings.json"),
+            r#"{
+              "active_provider": "openrouter",
+              "active_model": "openai/qwen/qwen-max"
+            }"#,
+        )
+        .expect("write settings");
+
+        let loader = ConfigLoader::new(cwd.clone(), home.clone());
+        let loaded = loader.load().expect("load config");
+
+        assert_eq!(loaded.active_provider(), Some("openrouter"));
+        assert_eq!(loaded.active_model_name(), Some("openai/qwen/qwen-max"));
+        assert_eq!(loaded.resolved_model(), Some("openai/qwen/qwen-max"));
+
+        fs::remove_dir_all(root).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn rejects_gemini_as_not_yet_supported_active_provider() {
+        // given
+        let root = temp_dir();
+        let cwd = root.join("project");
+        let home = root.join("home").join(".claw");
+        fs::create_dir_all(&home).expect("home config dir");
+        fs::create_dir_all(&cwd).expect("project dir");
+        fs::write(
+            home.join("settings.json"),
+            r#"{"active_provider": "gemini", "active_model": "gemini-2.5-pro"}"#,
+        )
+        .expect("write settings");
+
+        // when
+        let error = ConfigLoader::new(&cwd, &home)
+            .load()
+            .expect_err("gemini should be rejected");
+
+        // then
+        assert!(
+            error.to_string().contains("not yet supported"),
+            "unexpected error: {error}"
+        );
 
         fs::remove_dir_all(root).expect("cleanup temp dir");
     }

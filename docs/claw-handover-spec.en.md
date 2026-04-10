@@ -208,6 +208,22 @@ Current UI direction:
 - chat-first / minimal normal view
 - debug and run details moved behind Details
 
+## UI Direction Refinement
+
+`claw-studio` should remain coding-tool-first rather than settings-heavy.
+
+- the normal workspace view must stay minimal and low-noise
+- advanced controls must not be always visible in the main workspace
+- advanced features should live behind Details, panels, or secondary views
+- workspace focus (`compose -> run -> inspect`) is prioritized over UI richness
+- the sidebar should default to a collapsed icon rail rather than an always-expanded menu
+
+Additional rules:
+
+- project memory and settings must not dominate the main work surface
+- new features must preserve a simple, mock-like mental model
+- always-visible UI chrome should be minimized
+
 ## Current Implementation Status
 
 ### `local-api`
@@ -312,6 +328,48 @@ Not persisted:
 Rule:
 
 - run truth must not be restored from persisted studio state
+
+## Project Memory (Planned)
+
+Project Memory is introduced as project-scoped long-lived context for `claw-studio`.
+
+Purpose:
+
+- preserve important project context across sessions
+- separate project-level rules and decisions from session timeline history
+- reduce repeated context restatement
+
+Boundary rules:
+
+- Project Memory belongs to `claw-studio` workspace responsibility
+- Project Memory is not run truth
+- Project Memory is separate from session timeline
+- v1a includes storage and editing only
+- execution injection is a later phase
+
+V1a direction:
+
+- persist project memory separately from timeline state
+- keep memory UI minimal and secondary
+- memory must not appear as a dominant UI surface
+- optimize for human readability and manual editing
+
+Future direction:
+
+- allow user-explicit memory saving (`remember this`)
+- allow assistant-suggested memory candidates
+- memory updates must be reviewable and never silently auto-persisted
+
+## Persistence Extension (Planned)
+
+New persisted structure:
+
+- `projectMemoryByProjectId`
+
+Rules:
+
+- it must remain separate from timeline and session state
+- it must not restore run truth
 
 ## Context Management
 

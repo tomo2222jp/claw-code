@@ -208,6 +208,21 @@ Current UI direction:
 - chat-first / minimal normal view
 - debug and run details moved behind Details
 
+## UI 方針の補足
+
+`claw-studio` は settings-heavy な UI ではなく、coding-tool-first の workspace として維持する。
+
+- 通常の workspace view は最小表示・低ノイズを優先する
+- 高度な操作や補助機能は常時表示せず、Details・パネル・副次 view に配置する
+- `compose -> run -> inspect` の作業フローを最優先とする
+- sidebar は常時展開ではなく collapsed なアイコンレールを基本とする
+
+追加ルール:
+
+- project memory や settings は main work surface の主役にしない
+- 新機能追加時も、日常利用ではモックのようにシンプルな理解性を維持する
+- 常時表示 UI は最小限に抑える
+
 ## Current Implementation Status
 
 ### `local-api`
@@ -312,6 +327,48 @@ Not persisted:
 Rule:
 
 - run truth must not be restored from persisted studio state
+
+## Project Memory（計画）
+
+Project Memory は `claw-studio` における project 単位の長期コンテキストとして導入する。
+
+目的:
+
+- session をまたいで重要な前提を保持する
+- project-level の rules / decisions を timeline と分離する
+- 前提の再入力を減らす
+
+境界ルール:
+
+- Project Memory は `claw-studio` の責務とする
+- run truth ではない
+- session timeline とは分離する
+- v1a は保存と編集のみ
+- run 注入は後続フェーズ
+
+v1a 方針:
+
+- timeline と分離した永続化
+- UI は最小・副次的な位置に配置
+- 常時前面に出さない
+- 人間が読みやすく編集しやすいことを優先
+
+将来拡張:
+
+- ユーザー明示による保存（`remember this` 相当）
+- assistant による保存候補提案
+- memory 更新は無断自動化せず、必ずレビュー可能とする
+
+## 永続化拡張（予定）
+
+追加構造:
+
+- `projectMemoryByProjectId`
+
+ルール:
+
+- timeline / session state と分離する
+- run truth を復元してはならない
 
 ## Context Management
 

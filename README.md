@@ -28,20 +28,24 @@
   <img src="assets/claw-hero.jpeg" alt="Claw Code" width="300" />
 </p>
 
-Claw Code is the public Rust implementation of the `claw` CLI agent harness.
-The canonical implementation lives in [`rust/`](./rust), and the current source of truth for this repository is **ultraworkers/claw-code**.
+Claw Code is the public Rust implementation of the `claw` CLI agent harness.  
+The canonical upstream implementation for this repository is **ultraworkers/claw-code**, and the Rust workspace in [`rust/`](./rust) is the main runtime surface here.
 
 > [!IMPORTANT]
 > Start with [`USAGE.md`](./USAGE.md) for build, auth, CLI, session, and parity-harness workflows. Make `claw doctor` your first health check after building, use [`rust/README.md`](./rust/README.md) for crate-level details, read [`PARITY.md`](./PARITY.md) for the current Rust-port checkpoint, and see [`docs/container.md`](./docs/container.md) for the container-first workflow.
+>
+> For this workspace's ongoing `claw-ui` / `claw-studio` direction, read [`docs/claw-handover-spec.md`](./docs/claw-handover-spec.md) first. That file is the canonical local handover spec.
+>
+> For GPT/Codex or other LLM/tooling workflows, prefer [`docs/claw-handover-spec.en.md`](./docs/claw-handover-spec.en.md) as the stable English handover companion.
 
 ## Current repository shape
 
-- **`rust/`** — canonical Rust workspace and the `claw` CLI binary
-- **`USAGE.md`** — task-oriented usage guide for the current product surface
-- **`PARITY.md`** — Rust-port parity status and migration notes
-- **`ROADMAP.md`** — active roadmap and cleanup backlog
-- **`PHILOSOPHY.md`** — project intent and system-design framing
-- **`src/` + `tests/`** — companion Python/reference workspace and audit helpers; not the primary runtime surface
+- **`rust/`** - canonical Rust workspace and the `claw` CLI binary
+- **`USAGE.md`** - task-oriented usage guide for the current product surface
+- **`PARITY.md`** - Rust-port parity status and migration notes
+- **`ROADMAP.md`** - active roadmap and cleanup backlog
+- **`PHILOSOPHY.md`** - project intent and system-design framing
+- **`src/` + `tests/`** - companion Python/reference workspace and audit helpers; not the primary runtime surface
 
 ## Quick start
 
@@ -70,12 +74,14 @@ cargo test --workspace
 
 ## Documentation map
 
-- [`USAGE.md`](./USAGE.md) — quick commands, auth, sessions, config, parity harness
-- [`rust/README.md`](./rust/README.md) — crate map, CLI surface, features, workspace layout
-- [`PARITY.md`](./PARITY.md) — parity status for the Rust port
-- [`rust/MOCK_PARITY_HARNESS.md`](./rust/MOCK_PARITY_HARNESS.md) — deterministic mock-service harness details
-- [`ROADMAP.md`](./ROADMAP.md) — active roadmap and open cleanup work
-- [`PHILOSOPHY.md`](./PHILOSOPHY.md) — why the project exists and how it is operated
+- [`USAGE.md`](./USAGE.md) - quick commands, auth, sessions, config, parity harness
+- [`rust/README.md`](./rust/README.md) - crate map, CLI surface, features, workspace layout
+- [`PARITY.md`](./PARITY.md) - parity status for the Rust port
+- [`rust/MOCK_PARITY_HARNESS.md`](./rust/MOCK_PARITY_HARNESS.md) - deterministic mock-service harness details
+- [`ROADMAP.md`](./ROADMAP.md) - active roadmap and open cleanup work
+- [`PHILOSOPHY.md`](./PHILOSOPHY.md) - why the project exists and how it is operated
+- [`docs/claw-handover-spec.md`](./docs/claw-handover-spec.md) - canonical local handover spec for `claw-ui` / `claw-studio`
+- [`docs/claw-handover-spec.en.md`](./docs/claw-handover-spec.en.md) - English companion spec for GPT/Codex and tooling
 
 ## Ecosystem
 

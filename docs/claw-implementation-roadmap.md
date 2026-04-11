@@ -1,327 +1,180 @@
-# Claw 実装ロードマップ
+# Claw Implementation Roadmap
 
 ## 目的
 
-このロードマップは `claw-code`、`claw-ui`、`claw-studio` の開発計画を段階的に明確化する。以下を記録する：
-
-- 完了済みフェーズとその状態
-- 現在のフェーズと作業位置
-- 次の実装優先順位
-- やらないこと、後回し機能
-- 開発ルールと制約
-- 次チャット・次担当者のエントリーポイント
-
-ロードマップは `claw-handover-spec.md`（日本語版）をアーキテクチャと契約の source of truth として整合させている。
+この roadmap は `claw-code` / `claw-ui` / `claw-studio` の実装フェーズ、現在地、次の入口を整理する。
 
 ## システム構造
 
-プロジェクトは3層で構成される：
+1. UI Layer
+   - `apps/claw-studio` = primary desktop workspace UI
+   - `claw-ui/apps/web-ui` = verification web client
+2. API Layer
+   - `claw-ui/apps/local-api` = state owner / run coordinator
+3. Engine Layer
+   - `claw-code` = model routing / execution
 
-1. **UI層**: `claw-studio` — メイン作業空間UI
-   - Electron + React + TypeScript シェル
-   - コーディングツール中心、低ノイズ設計
-   - プロジェクト/セッション/タイムライン/コンポーザー 作業空間
-   - プロジェクトメモリと提案管理
+## 完了済み
 
-2. **API層**: `claw-ui/apps/local-api` — 状態オーナーと実行調整
-   - 実行ライフサイクルと状態権限
-   - ログ集約とバッファリング
-   - 設定管理と永続化
-   - エンジンへの実行ブリッジ
+- Phase 7G: UI simplification
+  - chat-first / quiet workspace
+  - overlay rail UX
+  - low-noise timeline
+  - composer 主役化
+- Phase 8A-8G
+  - memory injection
+  - attachment awareness
+  - model selection
+  - role-based modes
+  - memory prioritization
+  - web search
+  - git read
+- Phase 9A
+  - minimal tool abstraction
+- Phase 9.5 initial runtime hardening
+  - `stopping`
+  - `abnormal_exit`
+  - stop timeout fallback
+  - lifecycle guard
 
-3. **エンジン層**: `claw-code` — モデルルーティングと実行
-   - OpenRouter優先の提供元方針
-   - アクティブモデル設定
-   - permissionMode正規化
-   - フォールバックとリトライポリシー
+## 現在フェーズ
 
-## フェーズマップ
+- Phase 9.5: Runtime / Execution UX Hardening
+- 並行して provider / settings の設計整理を進める
 
-### Phase 0–5: 基礎構築（完了）
-初期アーキテクチャ、Git設定、コア依存関係。
+## Phase 9.5 継続
 
-### Phase 6: claw-studio 基盤構築（完了）
-- Electron + React シェル
-- イベント型対応のタイムライン表示
-- Enter送信、Shift+Enter改行のコンポーザー
-- サイドバーとセッションナビゲーション
-- 実行ステータス・ログポーリングループ
-- セッション永続化
+目的:
 
-### Phase 7: ワークスペース完成（進行中）
+- runtime reliability を強化する
+- stop / cancel / abnormal exit の扱いを安定化する
+- chat-first UX を崩さない
 
-#### 7A: UIシェル確立（完了）
-- デフォルト状態の折り畳みサイドバー アイコンレール
-- 固定底部コンポーザー
-- タイムライン中心ペーン
-- プロジェクト/セッション/メモリフレーム用のコンテキストストリップ
-- Project Memory と将来パネル用のオーバーレイアーキテクチャ
+固定条件:
 
-#### 7B: Details整理（完了）
-- メタデータ/出力/診断を分離
-- 通常ビューの折り畳み可能 Details セクションに移動
-- 低ノイズなタイムライン表示を維持
+- `local-api` truth owner を維持
+- `claw-studio` mirrored UI を維持
+- runtime tuning value と model selection を混ぜない
 
-#### 7C: Project Memory v1a（完了）
-- プロジェクトスコープのメモリ保存
-- `projectMemoryByProjectId` 経由の永続化
-- 右側オーバーレイのメモリUI
-- 軽量な手動編集インターフェース
-- 読み取り優先、オンデマンド編集モード
+## Phase 9B 継続: provider taxonomy と Gemini direct routing
 
-#### 7D: Project Memory v2（完了）
-- キャプチャフロー：タイムライン → 保留中レビュー → 永続メモリ
-- 保留中候補に対する accept / dismiss アクション
-- 種別分類：ルール / 決定 / 現在フォーカス
-- ピン留めアイテム対応
-- ルール/決定/フォーカスセクションと昇格可能候補
+目的:
 
-#### 7E: メモリ衛生管理（完了）
-- 完全重複検出と防止
-- 永続アイテムの削除操作
-- 空状態表示
-- `updatedAt` 追跡
-- オーバーレイセクション構成（Summary / Rules / Decisions / Current Focus / Pinned / Pending Review）
+- Gemini direct と OpenRouter 経由 Gemini の曖昧さを解消する
+- provider / billing path / endpoint path を `local-api` で明示化する
 
-#### 7F: Project Memory v3 / アシスタント提案（完了）
-- アシスタント提案メモリ候補のヒューリスティック検出
-- ルール/決定/フォーカス用パターンマッチング
-- タイムラインキャプチャボタン「提案」スタイル経由の微妙なUI統合
-- 正規化重複抑制（v3強化）
-- 保留中レビューへの提案段階化（自動保存なし）
-- 明示的な accept のみで永続メモリを変更
+方針:
 
-**状態**: 完全実装・重複排除で強化済み。
+- cloud provider taxonomy を固定する
+  - `google`
+  - `openrouter`
+  - `openai`
+  - `anthropic`
+- `executionMode=local` は cloud taxonomy と別扱い
+- `provider=google` は Gemini direct
+- `provider=openrouter` + Gemini-family model は OpenRouter 経由 Gemini
+- Standard の既定値は direct Gemini
+  - `executionMode=cloud`
+  - `provider=google`
+  - `modelId=gemini-2.5-flash`
+- Advanced は explicit provider selection のための面とする
 
-#### 7G: ワークスペース UX ポリッシング（完了）
+非スコープ:
 
-##### 7G-1: Quiet ワークスペース（完了）
-- タイムラインの実行/状態イベントを軽視
-- イベント詳細の UUID 非表示
-- Details ボタンの視覚的weight低減
-- 視覚階層改善
+- provider 解決ロジックを `claw-studio` に持たせない
+- model family 名から provider を暗黙推定しない
+- Google direct と OpenRouter Gemini を同じ経路として扱わない
 
-##### 7G-2: レスポンス コピー（完了）
-- アシスタント応答のクリップボードコピーボタン
-- 一時的な「Copied」フィードバック（トーストUI不要）
-- 静かで最小限のUI統合
+完了条件:
 
-##### 7G-3: 添付ファイル UX（完了）
-- ペースト画像添付（Ctrl+V）
-- ドラッグ&ドロップ画像サポート（ビジュアルフィードバック付き）
-- ファイルピッカーボタン（画像フィルタリング付き）
-- コンパクト添付ファイルチップ表示・削除ボタン
-- すべての入力方法での統合画像ファイル処理
-- 実行パイプラインへの転送
+- taxonomy が spec / roadmap / `local-api` resolution で一致する
+- Standard が Google direct Gemini に解決される
+- OpenRouter は explicit provider として残る
+- legacy fallback が維持される
 
-**状態**: Phase 7（ワークスペース完了）が完全完了。
+## 次フェーズ候補
 
-### Phase 8: 実行連携（進行中）
+### Packaging
 
-#### 8A: 入力 / メモリ → 実行注入（完了）
-- RunRequest 契約を `attachments` と `projectMemory` フィールドで拡張
-- studio-store が永続プロジェクトメモリ（ルール、決定、焦点、ピン留め）を収集
-- local-api 経由で配線（既存クライアント互換性は保持）
-- EngineAdapter インターフェース拡張で新フィールド対応
-- 実行要求パイプライン完全透明化
+- desktop distribution
+- installer
+- userData handling
 
-#### 8B: プロンプト注入（完了）
+### Controlled Git Write
 
-##### 8B-1: 最小プロンプト注入（完了）
-- プロジェクト文脈プリアンブル付きプロンプト構成
-- 非空のメモリセクションのみ含める
-- 元のユーザープロンプト正確に保持
-- 条件付きセクション含入（空ヘッダーなし）
+- planned only
+- explicit confirmation
+- diff preview
+- branch-only write
 
-##### 8B-2: 添付ファイル意識注入（完了）
-- 画像が存在する場合「Attached images:」セクション追加
-- 事実的文言のみ（画像解析・偽りなし）
-- メモリセクションとクリーンに構成
-- 将来のマルチモーダル対応に準備完了
+## Next Entry Point
 
-**状態**: コア実行連携完了。次は モデル選択・エージェントモード重視。
+1. `local-api` の provider resolution を fixed taxonomy に寄せる
+2. Standard を Google direct Gemini に固定する
+3. `llmSettings` absent / invalid 時の legacy fallback を維持する
+4. その後に runtime hardening を継続する
+## Phase 9C: Advanced Custom Provider（planned）
 
-### Phase 8C: モデル選択（完了）
-- セッション単位のモデル選択UI ✅
-- `local-api` truth を変えずモデル配線 ✅
-- アクティブモデル設定との互換性 ✅
+目的:
 
-### Phase 8D: ロール型エージェントモード（完了）
-- 軽量ロール/モード（default, planner, builder, reviewer） ✅
-- モード固有のプロンプト拡張 ✅
-- セッション単位のモード永続化 ✅
+- fixed taxonomy を崩さずに、Advanced 専用で OpenAI-compatible provider を試せる入口を追加する
 
-### Phase 8E: メモリ優先順位付け（完了）
-- 固定セクション制限での決定論的メモリ切詰 ✅
-- 優先順位：pinnedItems → currentFocus → decisions → rules ✅
-- 長時間セッション向け安全な最小限切詰 ✅
+スコープ:
 
-### Phase 8F: ウェブ検索（最小）（完了）
-- 特定クエリ用オプション軽量ウェブ検索 ✅
-- メモリ・文脈統合 ✅
-- 明示的ユーザーコントロールと制限結果 ✅
+- `provider=custom` を導入する
+- optional な `customProvider` settings を追加する
+- first version の項目は次に固定する
+  - `providerId`
+  - `displayName`
+  - `baseUrl`
+  - `apiKey`
+  - `modelId`
+- preset provider はそのまま維持する
+  - `google`
+  - `openrouter`
+  - `openai`
+  - `anthropic`
 
-### Phase 8G: Git 読取ツール（完了）
-- 読取専用 git log・diff・blame アクセス ✅
-- 現在プロジェクトにスコープ限定 ✅
-- 安全なサブプロセス処理と結果制限 ✅
+ルール:
 
-### Phase 9: 設定整理（計画中）
-- パス管理改善
-- バイナリ解決
-- 設定統一
+- preset / custom は明示的に分離する
+- `modelId` から provider path を推測しない
+- custom provider の first version は OpenAI-compatible endpoint のみに限定する
+- endpoint / key の解決は `local-api` が truth owner として扱う
+- `claw-studio` は入力と表示のみを担当する
+- custom provider の UI は quiet な Advanced surface の中だけに置く
 
-### Phase 10: パッケージング（計画中）
-- デスクトップ配布設定
-- userData ディレクトリ管理
-- インストーラー設定
+非スコープ:
 
-### Phase 11: 拡張機能（計画中）
-- リトライ観測とメトリクス
-- フォールバック動作の可視化
-- レビューUI拡張
-- 並列実行対応
+- provider plugin framework は入れない
+- OpenAI-compatible 以外の custom transport はまだ扱わない
+- 通常画面へ advanced settings を広げない
+- model family 名からの自動 provider 推測は入れない
 
-## 現在の状態
+ステータス:
 
-### 完了済み
-- ✅ エンジン（`claw-code`）：安定、OpenRouter-first
-- ✅ API層（`claw-ui/local-api`）：安定、`attachments`・メモリ・ロール注入用に拡張
-- ✅ UI基盤（`claw-studio`）：シェル、サイドバー、コンポーザー、タイムライン、すべてコア機能
-- ✅ Project Memory v1a：保存、編集、永続化
-- ✅ Project Memory v2：キャプチャ、accept/dismiss フロー、セクション
-- ✅ メモリ衛生管理：重複排除、削除、空状態
-- ✅ Details整理：メタデータ/出力/診断を分離
-- ✅ Project Memory v3：アシスタント提案検出・強化重複排除
-- ✅ ワークスペース UX ポリッシング（Phase 7G-1/2/3）：quiet タイムライン、レスポンス コピー、画像添付（ペースト/ドラッグ/ピッカー）
-- ✅ 実行連携（Phase 8A）：実行リクエストが プロンプト・添付・永続メモリを運搬
-- ✅ プロンプト注入（Phase 8B）：アダプターがメモリ・添付意識をプロンプトに注入
-- ✅ モデル選択（Phase 8C）：セッション単位UI、local-api 経由、下位互換
-- ✅ ロール型エージェントモード（Phase 8D）：軽量ロールシステム、プロンプト拡張
-- ✅ メモリ優先順位付け（Phase 8E）：固定セクション制限での決定論的切詰
-- ✅ ウェブ検索（Phase 8F）：最小限の明示的トリガー検索、制限結果付き
-- ✅ Git読取ツール（Phase 8G）：安全な読取専用ファイル読取と git log 検査
+- Planned
 
-### 現在デプロイ中
-- `claw-studio` を quiet・chat-first 作業空間として
-- 画像添付：ペースト、ドラッグ&ドロップ、ファイルピッカー
-- アシスタント応答コピー機能
-- `local-api` が唯一の実行状態オーナーとして
-- 実行リクエストが 受け入れ永続メモリ + 添付 を運搬
-- アダプターが プロンプトへの最小メモリ/添付注入
-- `claw-ui` ウェブクライアントで検証用として
+## Updated Next Entry Point
 
-### 作業位置
-Phase 8G（Git 読取ツール）完了。Phase 9（設定整理）へ次に進める準備完了。
+1. `shared/contracts` と `local-api` settings に optional `customProvider` を追加する
+2. preset provider の fixed taxonomy semantics は変えない
+3. `local-api` で `provider=custom` を OpenAI-compatible endpoint 限定で解決する
+4. custom fields を編集できる最小の quiet Advanced UI を追加する
+5. legacy fallback と Standard / Local の挙動は維持する
 
-## 次の実装優先順位
+## Recent UI Polish Status
 
-### 1. Phase 9: 設定整理（次）
-- バイナリパス発見改善
-- 設定表示統一
-- local-api 設定簡素化
+`claw-studio` で完了済みの小さな polish:
 
-### 2. Phase 10: パッケージング（次々）
-- デスクトップ配布設定
-- userData ディレクトリ管理
-- インストーラー設定
+- composer の主操作を single Run/Stop button に統合
+- run active 中だけ出る軽い `Thinking...` 表示を追加
+- Permission / AI selection を compact composer popover に移動
+- 通常 timeline では `running` / `completed` / `stopping` status row を主フローから外す
+- local abnormal-exit 後だけ出る軽い local readiness hint を追加
 
-### 3. Phase 11: 拡張機能（次々）
-- 並列実行対応
-- リトライ観測とメトリクス
-- フォールバック動作の可視化
-- レビューUI拡張
+これらは次の固定境界を維持する:
 
-## やらないこと・後回しアイテム
-
-**このフェーズではやらない:**
-- メモリの AI 自動保存
-- ベクトルデータベース・意味的重複排除
-- ファジーまたは類似度ベースマッチング
-- 複雑なメモリランキングや優先順位付け
-- ダッシュボード型UI再構成
-- Project Memory を local-api 所有権に移す（`claw-studio` にとどまる）
-- `claw-studio` を実行状態オーナーにする
-
-**明示的に除外:**
-- 並列実行（Phase 11 に予定）
-- リトライ観測（Phase 11 に予定）
-- フォールバック UI（Phase 11 に予定）
-- レビュー UI（Phase 11 に予定）
-
-## 開発ルール
-
-1. **Spec は source of truth**: 実装前に handover spec を必ず読む。Spec が変更必要な場合、同一作業単位で JP/EN 両版を更新すること。
-
-2. **3層アーキテクチャは固定**:
-   - `claw-studio` = ワークスペース UI とミラーリングのみ
-   - `local-api` = 実行/ログ状態オーナーのみ
-   - `claw-code` = 実行ブリッジのみ
-   - 責任の統合は禁止
-
-3. **ワークスペースは低ノイズを保つ**:
-   - 常時表示 UI クロムを最小化
-   - 高度な制御は Details、パネル、二次ビューの背後に移す
-   - 通常ビューは compose → run → inspect フローに集中
-
-4. **Project Memory は二次的**:
-   - メモリはメイン作業面を支配しない
-   - メモリは右側オーバーレイに留まる、拡張サイドバーではなく
-   - メモリ UI は省略可能で査読可能なまま
-
-5. **状態所有権は厳格**:
-   - `claw-studio` は実行 truth にならない
-   - `local-api` がただ一つの状態オーナー
-   - adapter は実行ブリッジのみ
-
-6. **永続化ルール**:
-   - 実行 truth は保存状態から復元されない
-   - タイムラインイベントはセッションごとに API から新鮮
-   - ワークスペースメタデータのみ永続化（プロジェクト/セッション選択、UI状態）
-
-7. **契約の決定を保つ**:
-   - `shared/contracts` を実行関連型に使用
-   - 契約が変更なら JP/EN spec 両版を更新
-   - 既存クライアント互換性を維持
-
-## 現在のサマリ
-
-| コンポーネント | 状態 | 備考 |
-|---|---|---|
-| `claw-code` | 安定 | OpenRouter優先、アクティブモデル設定済み |
-| `local-api` | 安定 | 実行/ログ状態所有、`attachments` + `projectMemory` + `role` + web/git結果フィールド付き拡張 RunRequest 受け入れ |
-| `claw-studio` | quiet workspace | Chat-first、画像添付（ペースト/ドラッグ/ピッカー）、応答コピー、低ノイズUI |
-| Project Memory v1–v3 | 完了 | キャプチャ、衛生管理、アシスタント提案、エンドツーエンド動作中 |
-| 実行連携 | 完了 | メモリ + 添付 + web/git結果を実行リクエスト経由で配線、アダプターが最小プロンプト拡張で注入 |
-| モデル選択 | 完了 | セッション単位UI、local-api 経由 |
-| ロール型モード | 完了 | 軽量ロール（default/planner/builder/reviewer）、プロンプト拡張 |
-| メモリ優先順位付け | 完了 | 固定セクション制限での決定論的切詰 |
-| ウェブ検索 | 完了 | 最小限の明示的トリガー検索、制限結果付き |
-| Git読取ツール | 完了 | 安全な読取専用ファイル読取と git log 検査 |
-| 次フェーズ入口 | Phase 9 | 設定整理（パス管理、設定統一） |
-
-## 次のエントリーポイント
-
-**次チャット向け:**
-
-1. `docs/claw-handover-spec.md` をまず読んでアーキテクチャと契約を確認
-2. 次の作業は **Phase 9: 設定整理**
-   - バイナリパス発見と解決の改善
-   - 設定表示統一
-   - local-api 設定簡素化
-   - 開発者体験改善
-3. すべての Spec 変更は JP/EN 両版を更新すること
-4. 実装は最小限・可逆的に保つ
-
-**現在のテストエントリーポイント:**
-- `claw-ui/apps/local-api` で `npm run typecheck && npm run build` を実行
-- 実行パイプラインの回帰なしを確認
-- 手動テスト：モデル選択・ロール型モード・メモリ優先順位付け・ウェブ検索・git読取をログで確認
-- デバッグログで "[v1 injection]"、"[v1 role]"、"[v1 memory]"、"[v1 web]"、"[v1 git]" メッセージを確認
-- 添付ファイル処理が継続して動作することを確認（ペースト、ドラッグ、ピッカー）
-
----
-
-**最終更新**: 2026-04-11  
-**整合対象**: `claw-handover-spec.md` (latest)  
-**実装状態**: Phase 8G（Git 読取ツール）完了、Phase 9（設定整理）準備完了
+- `local-api` が truth owner
+- `claw-studio` は mirrored UI のみ
+- 通常 workspace UX は chat-first / low-noise を維持する

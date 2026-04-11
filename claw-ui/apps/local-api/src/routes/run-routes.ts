@@ -4,6 +4,7 @@ import type { AgentRole, PermissionMode, RunRequest } from "../../../../shared/c
 import type { AppContext } from "../types/app-context.js";
 import { sendApiError } from "./route-errors.js";
 import { shouldTriggerWebSearch, performWebSearch } from "../services/web-search-service.js";
+import { shouldTriggerGitRead, extractFilePathsFromPrompt, readFileFromRepo, getFileGitLog, getCurrentBranch } from "../services/git-read-service.js";
 
 export async function registerRunRoutes(
   app: FastifyInstance,
@@ -29,6 +30,33 @@ export async function registerRunRoutes(
         });
       }
 
+      // Check if git read should be triggered based on prompt content
+      let gitResults = [];
+      if (shouldTriggerGitRead(trimmedPrompt)) {
+        // Extract file paths from prompt and read them
+        const repoRoot = process.cwd();
+        const filePaths = extractFilePathsFromPrompt(trimmedPrompt);
+        for (const filePath of filePaths) {
+          const fileResult = await readFileFromRepo(repoRoot, filePath);
+          if (fileResult) {
+            gitResults.push(fileResult);
+          }
+          const logResult = await getFileGitLog(repoRoot, filePath);
+          if (logResult) {
+            gitResults.push(logResult);
+          }
+        }
+        // Also get current branch if no other results
+        if (gitResults.length === 0) {
+          const branchResult = await getCurrentBranch(repoRoot);
+          if (branchResult) {
+            gitResults.push(branchResult);
+          }
+        }
+        // Limit to 3 results max
+        gitResults = gitResults.slice(0, 3);
+      }
+
       const run = context.runService.startRun(
         {
           prompt: trimmedPrompt,
@@ -37,6 +65,7 @@ export async function registerRunRoutes(
           projectMemory: request.body.projectMemory,
           role: normalizeRole(request.body?.role),
           webResults,
+          gitResults,
         },
         settings,
       );

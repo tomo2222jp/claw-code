@@ -41,6 +41,7 @@ export class RunService {
           projectMemory: request.projectMemory,
           role: request.role,
           webResults: request.webResults,
+          gitResults: request.gitResults,
         },
         {
         onStatus: (status, patch) => {

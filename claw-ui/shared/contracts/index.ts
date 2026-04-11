@@ -28,6 +28,11 @@ export type WebResult = {
   url: string;
 };
 
+export type GitReadResult = {
+  path: string;
+  excerpt: string;
+};
+
 export type RunRequest = {
   prompt: string;
   permissionMode?: PermissionMode;
@@ -35,6 +40,7 @@ export type RunRequest = {
   projectMemory?: InjectedProjectMemory;
   role?: AgentRole;
   webResults?: WebResult[];
+  gitResults?: GitReadResult[];
 };
 
 export type RunStatus =

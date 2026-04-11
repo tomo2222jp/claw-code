@@ -1,6 +1,7 @@
 import type {
   AgentRole,
   AppSettings,
+  GitReadResult,
   ImageAttachment,
   InjectedProjectMemory,
   LogEntry,
@@ -32,6 +33,7 @@ export type EngineAdapterRun = Pick<RunRecord, "id" | "prompt"> & {
   projectMemory?: InjectedProjectMemory;
   role?: AgentRole;
   webResults?: WebResult[];
+  gitResults?: GitReadResult[];
 };
 
 export interface EngineAdapter {

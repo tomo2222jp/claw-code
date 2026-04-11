@@ -8,7 +8,7 @@ import type {
   EngineAdapterRun,
   RunningEngineHandle,
 } from "./engine-adapter.js";
-import type { WebResult } from "../../../../shared/contracts/index.js";
+import type { GitReadResult, WebResult } from "../../../../shared/contracts/index.js";
 import { performWebSearch, shouldTriggerWebSearch, formatWebResults } from "../services/web-search-service.js";
 
 type ClawEngineAdapterOptions = {
@@ -35,10 +35,11 @@ export class ClawEngineAdapter implements EngineAdapter {
   startRun(run: EngineAdapterRun, callbacks: EngineAdapterCallbacks): RunningEngineHandle {
     assertSpawnPrerequisites(this.repoRoot, this.clawCliPath);
 
-    // Use web results if provided, or check if search should be triggered
+    // Use web results and git results if provided
     const webResults = run.webResults || [];
+    const gitResults = run.gitResults || [];
 
-    const injectedPrompt = buildPrompt(run.prompt, run.projectMemory, run.attachments, run.role, webResults);
+    const injectedPrompt = buildPrompt(run.prompt, run.projectMemory, run.attachments, run.role, webResults, gitResults);
 
     const args = [
       ...this.clawCliArgsPrefix,
@@ -94,6 +95,9 @@ export class ClawEngineAdapter implements EngineAdapter {
     }
     if (webResults.length > 0) {
       callbacks.onLog("system", `[v1 web] search results applied: ${webResults.length} items`);
+    }
+    if (gitResults.length > 0) {
+      callbacks.onLog("system", `[v1 git] repo context applied: ${gitResults.length} items`);
     }
 
     let child: ChildProcessWithoutNullStreams;
@@ -201,19 +205,21 @@ function buildPrompt(
   attachments?: EngineAdapterRun["attachments"],
   role?: EngineAdapterRun["role"],
   webResults?: WebResult[],
+  gitResults?: GitReadResult[],
 ): string {
   const parts: string[] = [];
 
   // Apply memory prioritization before injection
   const prioritizedMemory = projectMemory ? prioritizeMemory(projectMemory) : undefined;
 
-  // 1. Context preamble when project memory or web results are present
+  // 1. Context preamble when project memory, web results, or git results are present
   const hasMemory =
     prioritizedMemory !== undefined &&
     Object.values(prioritizedMemory).some((v) => Array.isArray(v) && v.length > 0);
   const hasWebResults = webResults && webResults.length > 0;
+  const hasGitResults = gitResults && gitResults.length > 0;
 
-  if (hasMemory || hasWebResults) {
+  if (hasMemory || hasWebResults || hasGitResults) {
     parts.push("You are working with the following context.");
   }
 
@@ -244,14 +250,22 @@ function buildPrompt(
     parts.push(`Web search results:\n${formattedResults}`);
   }
 
-  // 4. Attachment awareness
+  // 4. Repository context (when available)
+  if (hasGitResults) {
+    const formattedResults = gitResults
+      .map((result) => `- Path: ${result.path}\n  Excerpt: ${result.excerpt}`)
+      .join("\n");
+    parts.push(`Repository context:\n${formattedResults}`);
+  }
+
+  // 5. Attachment awareness
   if (attachments && attachments.length > 0) {
     const count = attachments.length;
     const label = count === 1 ? "1 image attachment is" : `${count} image attachments are`;
     parts.push(`Attached images:\n- ${label} included with this request.`);
   }
 
-  // 5. Role guidance (additive, only for non-default roles)
+  // 6. Role guidance (additive, only for non-default roles)
   if (role && role !== "default") {
     parts.push(buildRoleGuidance(role));
   }

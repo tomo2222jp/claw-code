@@ -32,7 +32,17 @@ export class RunService {
     this.logs.set(run.id, []);
 
     try {
-      const handle = this.adapter.startRun({ ...run, settings }, {
+      const handle = this.adapter.startRun(
+        {
+          ...run,
+          permissionMode: request.permissionMode ?? "default",
+          settings,
+          attachments: request.attachments,
+          projectMemory: request.projectMemory,
+          role: request.role,
+          webResults: request.webResults,
+        },
+        {
         onStatus: (status, patch) => {
           this.updateRun(run.id, status, patch);
           if (isTerminalStatus(status)) {
@@ -42,7 +52,8 @@ export class RunService {
         onLog: (stream, message) => {
           this.appendLog(run.id, { ts: new Date().toISOString(), stream, message });
         },
-      });
+        },
+      );
 
       this.activeRuns.set(run.id, { handle });
       return this.getRun(run.id)!;

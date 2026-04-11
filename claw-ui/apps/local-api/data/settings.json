@@ -1,0 +1,6 @@
+{
+  "activeProvider": "openrouter",
+  "activeModel": "openai/gpt-oss-120b:free",
+  "retryCount": 3,
+  "openaiBaseUrl": "https://openrouter.ai/api/v1"
+}

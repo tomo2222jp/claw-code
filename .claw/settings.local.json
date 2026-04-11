@@ -1,0 +1,5 @@
+{
+  "active_provider": "openrouter",
+  "active_model": "openai/gpt-oss-120b:free",
+  "retry_count": 2
+}

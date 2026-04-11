@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import fastifyCors from "@fastify/cors";
 
 import { ClawEngineAdapter } from "./adapters/claw-engine-adapter.js";
 import { registerHealthRoutes } from "./routes/health-routes.js";
@@ -13,6 +14,9 @@ const host = process.env.HOST ?? "127.0.0.1";
 
 async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   const app = Fastify({ logger: true });
+  await app.register(fastifyCors, {
+    origin: true,
+  });
   const context: AppContext = {
     settingsService: new SettingsService(resolveSettingsFilePath()),
     runService: new RunService(new ClawEngineAdapter()),

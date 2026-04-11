@@ -8,6 +8,8 @@ import type {
   EngineAdapterRun,
   RunningEngineHandle,
 } from "./engine-adapter.js";
+import type { WebResult } from "../../../../shared/contracts/index.js";
+import { performWebSearch, shouldTriggerWebSearch, formatWebResults } from "../services/web-search-service.js";
 
 type ClawEngineAdapterOptions = {
   clawCliPath?: string;
@@ -33,7 +35,10 @@ export class ClawEngineAdapter implements EngineAdapter {
   startRun(run: EngineAdapterRun, callbacks: EngineAdapterCallbacks): RunningEngineHandle {
     assertSpawnPrerequisites(this.repoRoot, this.clawCliPath);
 
-    const injectedPrompt = buildPrompt(run.prompt, run.projectMemory, run.attachments, run.role);
+    // Use web results if provided, or check if search should be triggered
+    const webResults = run.webResults || [];
+
+    const injectedPrompt = buildPrompt(run.prompt, run.projectMemory, run.attachments, run.role, webResults);
 
     const args = [
       ...this.clawCliArgsPrefix,
@@ -86,6 +91,9 @@ export class ClawEngineAdapter implements EngineAdapter {
     }
     if (run.role && run.role !== "default") {
       callbacks.onLog("system", `[v1 role] role applied: ${run.role}`);
+    }
+    if (webResults.length > 0) {
+      callbacks.onLog("system", `[v1 web] search results applied: ${webResults.length} items`);
     }
 
     let child: ChildProcessWithoutNullStreams;
@@ -192,19 +200,21 @@ function buildPrompt(
   projectMemory?: EngineAdapterRun["projectMemory"],
   attachments?: EngineAdapterRun["attachments"],
   role?: EngineAdapterRun["role"],
+  webResults?: WebResult[],
 ): string {
   const parts: string[] = [];
 
   // Apply memory prioritization before injection
   const prioritizedMemory = projectMemory ? prioritizeMemory(projectMemory) : undefined;
 
-  // 1. Context preamble when project memory is present
+  // 1. Context preamble when project memory or web results are present
   const hasMemory =
     prioritizedMemory !== undefined &&
     Object.values(prioritizedMemory).some((v) => Array.isArray(v) && v.length > 0);
+  const hasWebResults = webResults && webResults.length > 0;
 
-  if (hasMemory) {
-    parts.push("You are working with the following project context.");
+  if (hasMemory || hasWebResults) {
+    parts.push("You are working with the following context.");
   }
 
   // 2. Project memory sections in priority order: pinnedItems → currentFocus → decisions → rules
@@ -223,14 +233,25 @@ function buildPrompt(
     }
   }
 
-  // 3. Attachment awareness
+  // 3. Web search results (when available)
+  if (hasWebResults) {
+    const formattedResults = webResults
+      .map(
+        (result) =>
+          `- Title: ${result.title}\n  Snippet: ${result.snippet}\n  URL: ${result.url}`,
+      )
+      .join("\n");
+    parts.push(`Web search results:\n${formattedResults}`);
+  }
+
+  // 4. Attachment awareness
   if (attachments && attachments.length > 0) {
     const count = attachments.length;
     const label = count === 1 ? "1 image attachment is" : `${count} image attachments are`;
     parts.push(`Attached images:\n- ${label} included with this request.`);
   }
 
-  // 4. Role guidance (additive, only for non-default roles)
+  // 5. Role guidance (additive, only for non-default roles)
   if (role && role !== "default") {
     parts.push(buildRoleGuidance(role));
   }
@@ -240,7 +261,7 @@ function buildPrompt(
     return userPrompt;
   }
 
-  // 5. User request
+  // 6. User request
   parts.push(`User request:\n${userPrompt}`);
 
   return parts.join("\n\n");

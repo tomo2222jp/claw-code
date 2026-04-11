@@ -1,0 +1,3 @@
+{"created_at_ms":1775832485423,"session_id":"session-1775832485423-0","type":"session_meta","updated_at_ms":1775832491878,"version":1}
+{"message":{"blocks":[{"text":"ルートのディレクトリ教えて","type":"text"}],"role":"user"},"type":"message"}
+{"message":{"blocks":[{"text":"プロジェクトのルートディレクトリは以下になります。\n\n**`C:\\temp\\claw-code`**","type":"text"}],"role":"assistant","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":4086,"output_tokens":75}},"type":"message"}

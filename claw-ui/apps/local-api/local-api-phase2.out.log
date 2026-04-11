@@ -1,0 +1,5 @@
+
+> @claw-ui/local-api@0.1.0 start
+> tsx src/index.ts
+
+{"level":50,"time":1775769473867,"pid":6068,"hostname":"DESKTOP-PIV8LL4","err":{"type":"Error","message":"listen EADDRINUSE: address already in use 127.0.0.1:4000","stack":"Error: listen EADDRINUSE: address already in use 127.0.0.1:4000\n    at Server.setupListenHandle [as _listen2] (node:net:1948:16)\n    at listenInCluster (node:net:2005:12)\n    at node:net:2214:7\n    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)","code":"EADDRINUSE","errno":-4091,"syscall":"listen","address":"127.0.0.1","port":4000},"msg":"listen EADDRINUSE: address already in use 127.0.0.1:4000"}

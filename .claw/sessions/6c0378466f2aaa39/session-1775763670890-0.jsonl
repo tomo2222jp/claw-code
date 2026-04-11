@@ -1,0 +1,3 @@
+{"created_at_ms":1775763670890,"session_id":"session-1775763670890-0","type":"session_meta","updated_at_ms":1775763673409,"version":1}
+{"message":{"blocks":[{"text":"こんにちは","type":"text"}],"role":"user"},"type":"message"}
+{"message":{"blocks":[{"text":"こんにちは！本日はどのようなお手伝いをいたしましょうか？","type":"text"}],"role":"assistant","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":2896,"output_tokens":31}},"type":"message"}

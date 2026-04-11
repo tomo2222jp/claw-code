@@ -1,4 +1,14 @@
-import type { AppSettings, LogEntry, RunRecord, RunStatus } from "../../../../shared/contracts/index.js";
+import type {
+  AgentRole,
+  AppSettings,
+  ImageAttachment,
+  InjectedProjectMemory,
+  LogEntry,
+  PermissionMode,
+  RunRecord,
+  RunStatus,
+  WebResult,
+} from "../../../../shared/contracts/index.js";
 
 export type EngineAdapterLogStream = LogEntry["stream"];
 
@@ -16,7 +26,12 @@ export type RunningEngineHandle = {
 };
 
 export type EngineAdapterRun = Pick<RunRecord, "id" | "prompt"> & {
+  permissionMode: PermissionMode;
   settings: AppSettings;
+  attachments?: ImageAttachment[];
+  projectMemory?: InjectedProjectMemory;
+  role?: AgentRole;
+  webResults?: WebResult[];
 };
 
 export interface EngineAdapter {

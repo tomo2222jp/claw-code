@@ -1,8 +1,9 @@
 import type { FastifyInstance } from "fastify";
 
-import type { RunRequest } from "../../../../shared/contracts/index.js";
+import type { AgentRole, PermissionMode, RunRequest } from "../../../../shared/contracts/index.js";
 import type { AppContext } from "../types/app-context.js";
 import { sendApiError } from "./route-errors.js";
+import { shouldTriggerWebSearch, performWebSearch } from "../services/web-search-service.js";
 
 export async function registerRunRoutes(
   app: FastifyInstance,
@@ -14,9 +15,31 @@ export async function registerRunRoutes(
     }
     try {
       const settings = await context.settingsService.getSettings();
-      const run = context.runService.startRun({
-        prompt: request.body.prompt.trim(),
-      }, settings);
+      const trimmedPrompt = request.body.prompt.trim();
+
+      // Check if web search should be triggered based on prompt content
+      let webResults = [];
+      if (shouldTriggerWebSearch(trimmedPrompt)) {
+        // Perform web search with the user's query
+        // For MVP, this will return empty if no API is configured
+        webResults = await performWebSearch(trimmedPrompt, {
+          maxResults: 3,
+          // In production, API key would come from environment or settings
+          apiKey: process.env.WEB_SEARCH_API_KEY,
+        });
+      }
+
+      const run = context.runService.startRun(
+        {
+          prompt: trimmedPrompt,
+          permissionMode: normalizePermissionMode(request.body?.permissionMode),
+          attachments: request.body.attachments,
+          projectMemory: request.body.projectMemory,
+          role: normalizeRole(request.body?.role),
+          webResults,
+        },
+        settings,
+      );
       reply.code(202);
       return { id: run.id, status: run.status };
     } catch (error) {
@@ -83,4 +106,13 @@ export async function registerRunRoutes(
       );
     }
   });
+}
+
+function normalizePermissionMode(value: unknown): PermissionMode {
+  return value === "full_access" ? "full_access" : "default";
+}
+
+function normalizeRole(value: unknown): AgentRole {
+  const valid: AgentRole[] = ["planner", "builder", "reviewer"];
+  return valid.includes(value as AgentRole) ? (value as AgentRole) : "default";
 }

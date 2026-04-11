@@ -5,8 +5,36 @@ export type AppSettings = {
   openaiBaseUrl: string;
 };
 
+export type PermissionMode = "default" | "full_access";
+
+export type AgentRole = "default" | "planner" | "builder" | "reviewer";
+
+export type ImageAttachment = {
+  id: string;
+  data: string;
+  mimeType: string;
+};
+
+export type InjectedProjectMemory = {
+  rules?: string[];
+  decisions?: string[];
+  currentFocus?: string[];
+  pinnedItems?: string[];
+};
+
+export type WebResult = {
+  title: string;
+  snippet: string;
+  url: string;
+};
+
 export type RunRequest = {
   prompt: string;
+  permissionMode?: PermissionMode;
+  attachments?: ImageAttachment[];
+  projectMemory?: InjectedProjectMemory;
+  role?: AgentRole;
+  webResults?: WebResult[];
 };
 
 export type RunStatus =

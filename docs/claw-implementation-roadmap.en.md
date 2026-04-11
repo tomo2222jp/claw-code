@@ -141,20 +141,20 @@ Initial architecture, git setup, core dependency structure.
 
 **Status**: Core execution integration complete. Next focus on model selection and agent modes.
 
-### Phase 8C: Model Selection (Planned)
-- per-session model selection UI
-- model routing without changing `local-api` truth
-- backward compatibility with active model settings
+### Phase 8C: Model Selection (Complete)
+- per-session model selection UI ✅
+- model routing without changing `local-api` truth ✅
+- backward compatibility with active model settings ✅
 
-### Phase 8D: Role-based Agent Modes (Planned)
-- lightweight role/mode system
-- mode-specific prompt augmentation
-- mode persistence per session
+### Phase 8D: Role-based Agent Modes (Complete)
+- lightweight role/mode system (default, planner, builder, reviewer) ✅
+- mode-specific prompt augmentation ✅
+- mode persistence per session ✅
 
-### Phase 8E: Memory Prioritization (Planned)
-- memory ranking when context grows large
-- selective memory inclusion based on relevance
-- safe truncation for long-running sessions
+### Phase 8E: Memory Prioritization (Complete)
+- deterministic memory truncation with fixed per-section limits ✅
+- priority order: pinnedItems → currentFocus → decisions → rules ✅
+- safe, minimal truncation for long-running sessions ✅
 
 ### Phase 8F: Web Search (Minimal) (Planned)
 - optional lightweight web search for specific queries
@@ -186,7 +186,7 @@ Initial architecture, git setup, core dependency structure.
 
 ### Completed
 - ✅ Engine (`claw-code`): stable, OpenRouter-first
-- ✅ API layer (`claw-ui/local-api`): stable, owns run/log state, extended for attachments and memory injection
+- ✅ API layer (`claw-ui/local-api`): stable, owns run/log state, extended for attachments, memory, and role injection
 - ✅ UI foundation (`claw-studio`): shell, sidebar, composer, timeline, all core interactions
 - ✅ Project Memory v1a: storage, editing, persistence
 - ✅ Project Memory v2: capture, accept/dismiss flow, sections
@@ -196,6 +196,9 @@ Initial architecture, git setup, core dependency structure.
 - ✅ Workspace UX Polish (Phase 7G-1/2/3): quiet timeline, response copy, image attachments (paste/drag/picker)
 - ✅ Execution integration (Phase 8A): run request carries prompt, attachments, project memory
 - ✅ Prompt injection (Phase 8B): memory and attachment awareness wired into execution
+- ✅ Model selection (Phase 8C): per-session UI, routed through local-api, backward compatible
+- ✅ Role-based agent modes (Phase 8D): lightweight role system with prompt shaping
+- ✅ Memory prioritization (Phase 8E): deterministic truncation with fixed per-section limits
 
 ### Currently Deployed
 - `claw-studio` as primary quiet, chat-first workspace
@@ -207,31 +210,21 @@ Initial architecture, git setup, core dependency structure.
 - `claw-ui` web client for verification
 
 ### Work Location
-Phase 8B (Prompt Injection) complete. Ready to move to Phase 8C (Model Selection) next.
+Phase 8E (Memory Prioritization) complete. Ready to move to Phase 8F (Web Search minimal) next.
 
 ## Next Implementation Priorities
 
-### 1. Phase 8C: Model Selection (Next)
-- per-session model selection UI
-- model routing through `local-api` without breaking `local-api` truth ownership
-- backward compatibility with active model settings
-
-### 2. Phase 8D: Role-based Agent Modes (Following)
-- lightweight role/mode system (e.g., "code-focused", "research-mode")
-- mode-specific prompt augmentation
-- mode persistence per session
-
-### 3. Phase 8E: Memory Prioritization (Following)
-- memory ranking when context grows large
-- selective memory inclusion based on relevance
-- safe truncation for long-running sessions
-
-### 4. Phase 8F: Web Search (Minimal) (Following)
+### 1. Phase 8F: Web Search (Minimal) (Next)
 - optional lightweight web search for specific queries
 - integration with memory and context
 - explicit user control
 
-### 5. Phase 9: Configuration Cleanup (Later)
+### 2. Phase 8G: Git Read Tools (Following)
+- read-only git log, diff, and blame access
+- scope limited to current project
+- safe subprocess handling
+
+### 3. Phase 9: Configuration Cleanup (Following)
 - Improve binary path discovery
 - Unify settings presentation
 - Simplify local-api configuration
@@ -297,30 +290,33 @@ Phase 8B (Prompt Injection) complete. Ready to move to Phase 8C (Model Selection
 | `claw-studio` | quiet workspace | Chat-first, image attachments (paste/drag/picker), response copy, low-noise UI |
 | Project Memory v1–v3 | complete | Capture, hygiene, assistant suggestion, durable memory working end-to-end |
 | Execution integration | complete | Memory + attachments wired through run request, adapter injects with minimal prompt augmentation |
-| Next phase entry | Phase 8C | Model selection per-session, maintaining `local-api` truth ownership |
+| Model selection | complete | Per-session UI in studio, routed through local-api |
+| Role-based modes | complete | Lightweight role system (default/planner/builder/reviewer) with prompt shaping |
+| Memory prioritization | complete | Deterministic truncation with fixed per-section limits before injection |
+| Next phase entry | Phase 8F | Web Search (minimal), explicit user control and scoped results |
 
 ## Next Entry Point
 
 **For the next chat:**
 
 1. Read `docs/claw-handover-spec.en.md` first to confirm architecture and contracts
-2. Next work is **Phase 8C: Model Selection**
-   - Design per-session model selection UI in `claw-studio`
-   - Wire model selection through `local-api` without breaking state ownership
-   - Ensure backward compatibility with active model settings
-3. Phase 8C boundary: `claw-studio` prepares and sends model preference, `local-api` validates and routes
+2. Next work is **Phase 8F: Web Search (minimal)**
+   - Implement lightweight search capability for specific user queries
+   - Explicit user control and scoped results only
+   - Integration with memory and context
+3. Phase 8F boundary: `claw-studio` initiates search, `local-api` or adapter routes query
 4. All spec changes must update both JP and EN versions
 5. Keep implementation minimal and reversible
 
 **Current test entry point:**
-- Run `npm run typecheck && npm run build` in `apps/claw-studio`
-- Verify no regressions in attachment handling (paste, drag, picker)
-- Manual test: paste image, drag image, select via picker; verify all appear as chips
-- Verify assistant response copy works
-- Verify memory injection in runs (check logs for "[v1 injection]" messages)
+- Run `npm run typecheck && npm run build` in `claw-ui/apps/local-api`
+- Verify no regressions in execution pipeline
+- Manual test: verify model selection, role-based modes, and memory prioritization in logs
+- Check debug logs for "[v1 injection]" messages (memory), "[v1 role]" messages (role), and "[v1 memory]" messages (prioritization)
+- Verify attachment handling continues to work (paste, drag, picker)
 
 ---
 
 **Last Updated**: 2026-04-11  
 **Aligned With**: `claw-handover-spec.en.md` (latest)  
-**Implementation Status**: Phase 8B complete, ready for Phase 8C
+**Implementation Status**: Phase 8E (Memory Prioritization) complete, ready for Phase 8F (Web Search minimal)

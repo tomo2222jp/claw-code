@@ -505,18 +505,21 @@ Every next chat should follow this order:
 Current repo state at a glance:
 
 - `claw-code`: active-model implementation exists and OpenRouter direction is already reflected
-- `local-api`: run/log truth, adapter wiring, extended RunRequest with `attachments` and `projectMemory` fields
+- `local-api`: run/log truth, adapter wiring, extended RunRequest with `attachments`, `projectMemory`, and `role` fields, memory prioritization applied before injection
 - `claw-ui`: verification vertical slice is already working
-- `claw-studio`: quiet, chat-first workspace UI with image attachments, response copy, low-noise design
+- `claw-studio`: quiet, chat-first workspace UI with execution modes support
   - image attachments: paste (Ctrl+V), drag & drop, file picker
   - assistant responses: copy-to-clipboard button
   - Project Memory: v1a (storage), v2 (capture flow), v3 (assistant suggestions) all complete
-  - run injection: accepted durable memory carried in RunRequest and injected into prompt
+  - model selection: per-session UI, saved through local-api settings
+  - role-based modes: default/planner/builder/reviewer with prompt shaping
+  - run injection: accepted durable memory prioritized and injected into prompt
+  - memory prioritization: pinnedItems/currentFocus/decisions/rules with fixed per-section limits
   - attachment awareness: factual acknowledgment in prompt when images present
 
 Most likely next major area:
 
-- `claw-studio` model selection UI, wired through `local-api` without breaking state ownership
+- Phase 8F: Web Search (minimal lightweight search capability)
 
 ## Confirmed Decisions
 
@@ -554,6 +557,9 @@ Most likely next major area:
 - ✅ execution injection from Project Memory into run context (Phase 8A)
 - ✅ minimal prompt injection of accepted durable memory (Phase 8B-1)
 - ✅ factual attachment awareness in prompt (Phase 8B-2)
+- ✅ session-level model selection UI wired through local-api (Phase 8C)
+- ✅ lightweight role-based agent modes with prompt shaping (Phase 8D)
+- ✅ deterministic memory prioritization before prompt injection (Phase 8E)
 - ✅ image attachment support: paste, drag & drop, file picker (Phase 7G-3)
 - ✅ response copy button on assistant messages (Phase 7G-2)
 - ✅ quiet workspace visual polish (Phase 7G-1)
@@ -562,9 +568,6 @@ Most likely next major area:
 
 ## Unresolved Items (Later Phases)
 
-- how session-level model selection should appear once it is wired through `shared/contracts -> local-api` (Phase 8C)
-- whether role-based agent modes should be part of model selection or separate (Phase 8D)
-- how memory ranking should handle large context (Phase 8E)
 - whether web search should be integrated with memory (Phase 8F)
 - whether git read tools should use MCP or direct subprocess (Phase 8G)
 - whether the v2 shell needs a stronger top-level project switcher beyond the current rail + expandable panel
@@ -578,18 +581,26 @@ Most likely next major area:
 
 ## Next Entry Point
 
-- Phases 7F–8B are complete and production-ready
-- the next phase is **Phase 8C: Model Selection**
-  - add per-session model selection UI in `claw-studio`
-  - wire selection through `local-api` without breaking state ownership
-  - maintain backward compatibility with active model settings
+- Phases 7F–8E are complete and production-ready
+- the next phase is **Phase 8F: Web Search (minimal)**
+  - lightweight search capability for specific queries
+  - explicit user control and scoped results
+  - integration with memory and context
   - keep implementation minimal and reversible
-- start implementation from `apps/claw-studio/src/renderer/pages/workspace-page.tsx` and `studio-store.ts`
-- model selection should use existing run request pipeline, not create new structures
-- after Phase 8C, next phases are 8D (agent modes), 8E (memory prioritization), 8F (web search), 8G (git tools)
-- MCP integration should remain for later phases, after these core execution modes are stable
+- after Phase 8F, next phases are 8G (git read tools), 9 (configuration cleanup), 10 (packaging)
+- MCP integration should remain for later phases, after core execution modes and tools are stable
 
 ## Change Log
+
+### 2026-04-11 (Updated for Phases 8C/8D/8E Completion)
+
+- **Phase 8C complete**: per-session model selection UI implemented in `claw-studio`, wired through `local-api` without breaking state ownership
+- **Phase 8D complete**: lightweight role-based agent modes (default, planner, builder, reviewer) with mode-specific prompt shaping
+- **Phase 8E complete**: deterministic memory prioritization before prompt injection with fixed per-section limits (pinnedItems: 3, currentFocus: 3, decisions: 3, rules: 2)
+- **RunRequest contract extended**: added `role?: AgentRole` field for mode selection
+- **Adapter layer enhanced**: memory prioritization applied in `buildPrompt()` before prompt construction, with debug logging
+- **Next entry point**: Phase 8F (Web Search minimal)
+- **Spec and roadmap synchronized**: all four documentation files updated with current implementation status
 
 ### 2026-04-11 (Updated for Phase 8B Completion)
 

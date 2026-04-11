@@ -120,9 +120,24 @@ Shared contract:
 ```ts
 type PermissionMode = "default" | "full_access";
 
+type ImageAttachment = {
+  id: string;
+  data: string;  // base64 data URL
+  mimeType: string;
+};
+
+type InjectedProjectMemory = {
+  rules?: string[];
+  decisions?: string[];
+  currentFocus?: string[];
+  pinnedItems?: string[];
+};
+
 type RunRequest = {
   prompt: string;
   permissionMode?: PermissionMode;
+  attachments?: ImageAttachment[];
+  projectMemory?: InjectedProjectMemory;
 };
 ```
 
@@ -131,11 +146,17 @@ Rules:
 - missing `permissionMode` falls back to `default`
 - invalid `permissionMode` falls back to `default`
 - existing `{ prompt }` clients must keep working unchanged
+- `attachments` carries pasted/dragged/selected image files (pass-through)
+- `projectMemory` carries only accepted durable memory (rules, decisions, focus, pinned)
+- pending/suggested memory is never included
+- empty memory sections are excluded from payload
 
 Execution bridge mapping:
 
 - `default -> --permission-mode default`
 - `full_access -> --permission-mode danger-full-access`
+- `projectMemory` → minimal prompt injection (if present)
+- `attachments` → factual acknowledgment in prompt (if present)
 
 ## Model Selection Policy
 
@@ -270,14 +291,18 @@ Implemented:
 
 - Electron + React + TypeScript shell
 - project / session navigation
-- timeline display
-- composer
+- timeline display with quiet, low-noise styling
+- composer with multi-method image attachments
   - Enter to send
   - Shift+Enter for newline
   - auto-grow
+  - Ctrl+V image paste
+  - drag & drop image support
+  - file picker button for image selection
+- image attachment display as compact removable chips
 - ja / en locale switching
 - local-api health connection
-- run start
+- run start with attachments and project memory
 - status / logs / final output mirroring via polling
 - mirrored timeline view
 - Jump to latest
@@ -285,7 +310,17 @@ Implemented:
 - session persistence first version
 - permission mode selector UI
 - `permissionMode` wiring into the run request path
+- response copy button on assistant messages with temporary "Copied" feedback
 - debug information behind Details
+- collapsed icon rail default
+- expandable sidebar panel for projects and sessions
+- right-side Project Memory overlay
+- project-scoped memory persistence (`projectMemoryByProjectId`)
+- lightweight Project Memory edit mode
+- Project Memory v2 capture flow (timeline → pending review → durable memory)
+- Project Memory v3 assistant suggestion detection and deduplication
+- workspace context strip for project / memory / session framing
+- shell polish: de-emphasized run/status events, reduced Details weight, improved hierarchy
 
 Current UI behavior:
 
@@ -293,6 +328,8 @@ Current UI behavior:
 - timeline is the only scrolling area
 - normal view prioritizes user / assistant / run status
 - stdout / stderr / metadata stay inside Details
+- Project Memory stays secondary and opens as a right overlay
+- run requests carry composed text, pasted/dropped/selected image attachments, and accepted durable project memory
 
 ## Persistence Policy
 
@@ -313,6 +350,7 @@ Persisted data:
 - `projects`
 - `sessions`
 - `timelineBySessionId`
+- `projectMemoryByProjectId`
 - `selectedProjectId`
 - `selectedSessionId`
 - `locale`
@@ -354,6 +392,43 @@ V1a direction:
 - memory must not appear as a dominant UI surface
 - optimize for human readability and manual editing
 
+Current implementation status:
+
+- project-scoped memory storage is implemented in `claw-studio`
+- memory is persisted separately from timeline/session history
+- memory opens in a right-side overlay
+- lightweight manual editing is implemented
+- Project Memory v1a, v2, v3 all implemented with full lifecycle
+- execution injection is implemented: accepted durable memory is carried in RunRequest
+- adapter layer injects memory into prompt minimally and conditionally
+- run requests include: `prompt`, `attachments`, `projectMemory` (durable items only)
+- pending/suggested memory is never injected
+
+V2 direction:
+
+- timeline items may expose subtle capture actions for user-explicit memory saving
+- capture must stage a reviewable candidate before any durable memory write
+- accepted `rule` / `decision` / `current_focus` candidates promote into durable Project Memory fields
+- accepted `pinned` items may stay in a small overlay-only pinned section rather than expanding the durable memory schema
+- pending review must live inside the Project Memory overlay, not as a separate dashboard surface
+
+V2 hygiene direction:
+
+- overlay sections should stay structured as Summary / Rules / Decisions / Current Focus / Pinned / Pending Review
+- empty durable sections should be hidden when possible, while Pending Review may show a minimal empty state
+- exact-duplicate durable accepts should be ignored rather than duplicated
+- durable memory items and pinned items must support lightweight removal
+- long text should stay readable via clamp-first display with a simple way to expand
+
+V3 assistant-suggested direction:
+
+- assistant-suggested memory must stay subtle and user-controlled
+- suggestions should appear only on eligible assistant/final-output timeline items
+- the first implementation should use simple renderer/store heuristics rather than a new LLM call
+- suggestion buttons should stage into Pending Review rather than writing durable memory directly
+- durable memory still changes only after the existing accept flow
+- suggestion state may stay lightweight and derived as long as dismissed suggestions do not immediately reappear
+
 Future direction:
 
 - allow user-explicit memory saving (`remember this`)
@@ -365,6 +440,7 @@ Future direction:
 New persisted structure:
 
 - `projectMemoryByProjectId`
+- `projectMemoryCandidatesByProjectId`
 
 Rules:
 
@@ -429,20 +505,111 @@ Every next chat should follow this order:
 Current repo state at a glance:
 
 - `claw-code`: active-model implementation exists and OpenRouter direction is already reflected
-- `local-api`: run/log truth, adapter wiring, and `permissionMode` normalization are in place
+- `local-api`: run/log truth, adapter wiring, extended RunRequest with `attachments` and `projectMemory` fields
 - `claw-ui`: verification vertical slice is already working
-- `claw-studio`: primary workspace UI is running with persistence, permission mode selection, and mirrored timeline behavior
+- `claw-studio`: quiet, chat-first workspace UI with image attachments, response copy, low-noise design
+  - image attachments: paste (Ctrl+V), drag & drop, file picker
+  - assistant responses: copy-to-clipboard button
+  - Project Memory: v1a (storage), v2 (capture flow), v3 (assistant suggestions) all complete
+  - run injection: accepted durable memory carried in RunRequest and injected into prompt
+  - attachment awareness: factual acknowledgment in prompt when images present
 
 Most likely next major area:
 
-- `claw-studio` workspace evolution and model-selection shaping
+- `claw-studio` model selection UI, wired through `local-api` without breaking state ownership
+
+## Confirmed Decisions
+
+- `claw-studio` remains the primary UI and should keep a coding-tool-first workspace shell
+- workspace polish should improve framing and readability without moving execution truth away from `local-api`
+- Project Memory remains a secondary surface; lightweight inline context is acceptable, but the full editor stays in the right overlay
+- normal timeline view should stay low-noise, with deeper run output still living behind Details
+- Project Memory v2 uses user-explicit capture with pending review before durable memory writes
+- accepted `pinned` items may remain overlay-only instead of changing the durable memory fields
+- Project Memory hygiene should prefer low-noise readability over richer management UI
+- Project Memory v3 should keep assistant suggestions subtle on assistant/final-output items and must never auto-save durable memory
+- assistant suggestions should stage into the same Pending Review gate rather than creating a second review surface
+- Project Memory v2 capture flow is implemented
+  - timeline items provide subtle capture actions:
+    - `Pin`
+    - `Save as Rule`
+    - `Save as Decision`
+    - `Save as Current Focus`
+  - capture creates a pending candidate first
+  - durable memory updates only via `Accept` from Pending Review
+  - `Dismiss` prevents promotion to durable memory
+- Project Memory hygiene is implemented
+  - exact duplicate prevention applies on durable accept
+  - remove actions exist for Rules / Decisions / Current Focus / Pinned
+  - `updatedAt` updates on accept and remove
+  - the memory overlay uses Summary / Rules / Decisions / Current Focus / Pinned / Pending Review
+  - empty states are defined for both memory and pending
+- UI remains coding-tool-first and low-noise
+  - capture actions stay subtle and hover/focus-first
+  - Project Memory overlay remains secondary
+  - normal timeline structure remains unchanged
+
+## Resolved Items
+
+- ✅ execution injection from Project Memory into run context (Phase 8A)
+- ✅ minimal prompt injection of accepted durable memory (Phase 8B-1)
+- ✅ factual attachment awareness in prompt (Phase 8B-2)
+- ✅ image attachment support: paste, drag & drop, file picker (Phase 7G-3)
+- ✅ response copy button on assistant messages (Phase 7G-2)
+- ✅ quiet workspace visual polish (Phase 7G-1)
+- ✅ Project Memory v1–v3 complete with full lifecycle
+- ✅ duplicate handling with exact-match and normalized suppression
+
+## Unresolved Items (Later Phases)
+
+- how session-level model selection should appear once it is wired through `shared/contracts -> local-api` (Phase 8C)
+- whether role-based agent modes should be part of model selection or separate (Phase 8D)
+- how memory ranking should handle large context (Phase 8E)
+- whether web search should be integrated with memory (Phase 8F)
+- whether git read tools should use MCP or direct subprocess (Phase 8G)
+- whether the v2 shell needs a stronger top-level project switcher beyond the current rail + expandable panel
+- whether Project Memory should gain explicit quick actions in the workspace header beyond opening the overlay
+- whether run summaries should become richer than the current status + Details grouping
+- whether pinned items should later gain ordering controls beyond simple add/remove
+- whether suggestion heuristics should later become configurable or remain fixed/simple
+- whether later phases should expose a lightweight way to permanently dismiss a suggestion source beyond hidden rejected candidates
+- memory ranking and prioritization for long-running sessions (Phase 8E)
+- multimodal image consumption when CLI supports it (future)
+
+## Next Entry Point
+
+- Phases 7F–8B are complete and production-ready
+- the next phase is **Phase 8C: Model Selection**
+  - add per-session model selection UI in `claw-studio`
+  - wire selection through `local-api` without breaking state ownership
+  - maintain backward compatibility with active model settings
+  - keep implementation minimal and reversible
+- start implementation from `apps/claw-studio/src/renderer/pages/workspace-page.tsx` and `studio-store.ts`
+- model selection should use existing run request pipeline, not create new structures
+- after Phase 8C, next phases are 8D (agent modes), 8E (memory prioritization), 8F (web search), 8G (git tools)
+- MCP integration should remain for later phases, after these core execution modes are stable
 
 ## Change Log
 
-### 2026-04-11
+### 2026-04-11 (Updated for Phase 8B Completion)
+
+- **Phases 7G-1/2/3 complete**: quiet workspace, response copy, image attachments (paste/drag/picker)
+- **Phase 8A complete**: run request carries attachments and accepted durable project memory
+- **Phase 8B-1/2 complete**: adapter injects memory and attachment awareness into prompt
+- **Contract updated**: RunRequest now includes `attachments` and `projectMemory` fields
+- **Next entry point**: Phase 8C (model selection per-session)
+- **Roadmap updated**: phases 8C–8G outlined, MCP deferred to later phases
+- **Spec aligned**: current status reflects all completed implementation work
+
+### 2026-04-11 (Original)
 
 - added English LLM/tooling companion spec
 - aligned English spec with the current `claw-studio`-first direction
 - recorded persistence first version
 - recorded `permissionMode` end-to-end wiring
 - recorded explicit model-selection and preferred-model policy
+- recorded collapsed-rail + Project Memory overlay implementation progress
+- recorded workspace-shell polish direction: minimal context strip, fixed low-noise timeline, Project Memory still secondary
+- recorded Project Memory v2 direction: subtle capture actions, pending review, accept/dismiss promotion flow
+- recorded Project Memory hygiene direction: hidden empty sections, exact duplicate prevention, remove actions, clamp-first readability
+- recorded Project Memory v3 direction: assistant/final-output suggestions stay heuristic, subtle, and review-gated via Pending Review

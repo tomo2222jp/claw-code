@@ -93,17 +93,78 @@ Initial architecture, git setup, core dependency structure.
 
 **Status**: Fully implemented and hardened with duplicate deduplication.
 
-### Phase 8: Execution Integration (Planned)
+#### 7G: Workspace UX Polish (Complete)
 
-#### 8A: Memory → Run Injection (v1b)
-- pass Project Memory as execution context
-- minimal contract extension through `local-api`
-- injection point in run request pipeline
+##### 7G-1: Quiet Workspace (Complete)
+- de-emphasized run/status events in timeline
+- hidden UUIDs in event details
+- reduced Details button visual weight
+- improved visual hierarchy
 
-#### 8B: Execution Stabilization
-- enhanced stop semantics
-- long-run reliability improvements
-- improved error classification and handling
+##### 7G-2: Response Copy (Complete)
+- copy-to-clipboard button on assistant responses
+- temporary "Copied" feedback (no toast infrastructure)
+- quiet, minimal UI integration
+
+##### 7G-3: Attachments UX (Complete)
+- pasted image attachments (Ctrl+V)
+- drag & drop image support with visual feedback
+- file picker button with image filtering
+- compact attachment chip display with remove buttons
+- unified image file processing across all input methods
+- forward to execution pipeline
+
+**Status**: Phase 7 (Workspace Completion) fully complete.
+
+### Phase 8: Execution Integration (In Progress)
+
+#### 8A: Input / Memory → Run Injection (Complete)
+- extended RunRequest contract with `attachments` and `projectMemory` fields
+- studio-store collects durable project memory (rules, decisions, focus, pinned items)
+- wired through local-api without breaking existing clients
+- EngineAdapter interface extended to carry new fields
+- run request pipeline fully transparent
+
+#### 8B: Prompt Injection (Complete)
+
+##### 8B-1: Minimal Prompt Injection (Complete)
+- builds composed prompt with project context preamble
+- includes only non-empty memory sections
+- preserves original user prompt exactly
+- conditional section inclusion (no empty headers)
+
+##### 8B-2: Attachment Awareness Injection (Complete)
+- adds factual "Attached images:" section when images present
+- factual wording only (no image parsing or false claims)
+- composes cleanly with memory sections
+- prepared for future multimodal support
+
+**Status**: Core execution integration complete. Next focus on model selection and agent modes.
+
+### Phase 8C: Model Selection (Planned)
+- per-session model selection UI
+- model routing without changing `local-api` truth
+- backward compatibility with active model settings
+
+### Phase 8D: Role-based Agent Modes (Planned)
+- lightweight role/mode system
+- mode-specific prompt augmentation
+- mode persistence per session
+
+### Phase 8E: Memory Prioritization (Planned)
+- memory ranking when context grows large
+- selective memory inclusion based on relevance
+- safe truncation for long-running sessions
+
+### Phase 8F: Web Search (Minimal) (Planned)
+- optional lightweight web search for specific queries
+- integration with memory and context
+- explicit user control
+
+### Phase 8G: Git Read Tools (Planned)
+- read-only git log, diff, and blame access
+- scope limited to current project
+- safe subprocess handling
 
 ### Phase 9: Configuration Cleanup (Planned)
 - path management improvements
@@ -124,42 +185,53 @@ Initial architecture, git setup, core dependency structure.
 ## Current Status
 
 ### Completed
-- ✅ Engine (`claw-code`): stable
-- ✅ API layer (`claw-ui/local-api`): stable with settings and run ownership
-- ✅ UI foundation (`claw-studio`): shell, sidebar, composer, timeline
+- ✅ Engine (`claw-code`): stable, OpenRouter-first
+- ✅ API layer (`claw-ui/local-api`): stable, owns run/log state, extended for attachments and memory injection
+- ✅ UI foundation (`claw-studio`): shell, sidebar, composer, timeline, all core interactions
 - ✅ Project Memory v1a: storage, editing, persistence
 - ✅ Project Memory v2: capture, accept/dismiss flow, sections
 - ✅ Memory hygiene: dedup, removal, empty states
 - ✅ Details organization: metadata/output/diagnostics separated
 - ✅ Project Memory v3: assistant suggestion detection and hardened dedup
+- ✅ Workspace UX Polish (Phase 7G-1/2/3): quiet timeline, response copy, image attachments (paste/drag/picker)
+- ✅ Execution integration (Phase 8A): run request carries prompt, attachments, project memory
+- ✅ Prompt injection (Phase 8B): memory and attachment awareness wired into execution
 
 ### Currently Deployed
-- `claw-studio` as primary workspace
+- `claw-studio` as primary quiet, chat-first workspace
+- image attachments via paste, drag & drop, and file picker
+- assistant response copy functionality
 - `local-api` as the only run state owner
+- run requests carrying accepted durable memory + attachments
+- adapter with minimal memory/attachment injection into prompt
 - `claw-ui` web client for verification
 
 ### Work Location
-Phase 7F hardening is complete. Ready to move to Phase 7G next.
+Phase 8B (Prompt Injection) complete. Ready to move to Phase 8C (Model Selection) next.
 
 ## Next Implementation Priorities
 
-### 1. Phase 7G: Workspace UX Polish (Next)
-- **Hover interactions**: improve timeline capture button behavior and feedback
-- **Spacing and visual hierarchy**: refine margins, padding, and alignment
-- **Assistant response readability**: improve text formatting and display
-- **Interaction smoothing**: transitions, focus states, animation
+### 1. Phase 8C: Model Selection (Next)
+- per-session model selection UI
+- model routing through `local-api` without breaking `local-api` truth ownership
+- backward compatibility with active model settings
 
-### 2. Phase 8A: Memory → Run Injection (Following)
-- Design and implement minimal Project Memory injection into run requests
-- Extend `local-api` run contract to carry memory context
-- Wire memory into execution context without changing `claw-studio` state ownership
+### 2. Phase 8D: Role-based Agent Modes (Following)
+- lightweight role/mode system (e.g., "code-focused", "research-mode")
+- mode-specific prompt augmentation
+- mode persistence per session
 
-### 3. Phase 8B: Execution Stabilization (Following)
-- Improve stop handling and run cleanup
-- Enhance error classification
-- Test long-running executions
+### 3. Phase 8E: Memory Prioritization (Following)
+- memory ranking when context grows large
+- selective memory inclusion based on relevance
+- safe truncation for long-running sessions
 
-### 4. Phase 9: Configuration Cleanup (Later)
+### 4. Phase 8F: Web Search (Minimal) (Following)
+- optional lightweight web search for specific queries
+- integration with memory and context
+- explicit user control
+
+### 5. Phase 9: Configuration Cleanup (Later)
 - Improve binary path discovery
 - Unify settings presentation
 - Simplify local-api configuration
@@ -221,31 +293,34 @@ Phase 7F hardening is complete. Ready to move to Phase 7G next.
 | Component | Status | Note |
 |---|---|---|
 | `claw-code` | stable | OpenRouter-first, active model configured |
-| `local-api` | stable | Owns run/log state, `permissionMode` wired |
-| `claw-studio` | main battlefield | UI polish and memory/execution integration next |
-| Project Memory v1–v2 | complete | Capture, hygiene, pending review working |
-| Project Memory v3 | complete | Assistant suggestion + hardened dedup |
-| Memory → Run injection | not started | Planned for Phase 8A |
+| `local-api` | stable | Owns run/log state, accepts extended RunRequest with attachments + projectMemory |
+| `claw-studio` | quiet workspace | Chat-first, image attachments (paste/drag/picker), response copy, low-noise UI |
+| Project Memory v1–v3 | complete | Capture, hygiene, assistant suggestion, durable memory working end-to-end |
+| Execution integration | complete | Memory + attachments wired through run request, adapter injects with minimal prompt augmentation |
+| Next phase entry | Phase 8C | Model selection per-session, maintaining `local-api` truth ownership |
 
 ## Next Entry Point
 
 **For the next chat:**
 
 1. Read `docs/claw-handover-spec.en.md` first to confirm architecture and contracts
-2. Next work is **Phase 7G: UX Polish**
-   - Start with timeline capture button hover states
-   - Refine spacing in memory overlay sections
-   - Improve readability of long assistant responses
-3. Keep changes inside `apps/claw-studio` unless spec wording needs adjustment
-4. After Phase 7G, move to Phase 8A (memory injection into run context)
-5. All spec changes must update both JP and EN versions
+2. Next work is **Phase 8C: Model Selection**
+   - Design per-session model selection UI in `claw-studio`
+   - Wire model selection through `local-api` without breaking state ownership
+   - Ensure backward compatibility with active model settings
+3. Phase 8C boundary: `claw-studio` prepares and sends model preference, `local-api` validates and routes
+4. All spec changes must update both JP and EN versions
+5. Keep implementation minimal and reversible
 
 **Current test entry point:**
 - Run `npm run typecheck && npm run build` in `apps/claw-studio`
-- Verify no regressions in Project Memory v3 dedup or suggestion flow
-- Manual test: generate suggestions, verify duplicates are suppressed
+- Verify no regressions in attachment handling (paste, drag, picker)
+- Manual test: paste image, drag image, select via picker; verify all appear as chips
+- Verify assistant response copy works
+- Verify memory injection in runs (check logs for "[v1 injection]" messages)
 
 ---
 
 **Last Updated**: 2026-04-11  
-**Aligned With**: `claw-handover-spec.en.md` (commit e9b1502c7dd55781307faf2bdadea32bd9cd74c6)
+**Aligned With**: `claw-handover-spec.en.md` (latest)  
+**Implementation Status**: Phase 8B complete, ready for Phase 8C

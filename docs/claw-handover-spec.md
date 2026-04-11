@@ -505,9 +505,9 @@ Every next chat should follow this order:
 Current repo state at a glance:
 
 - `claw-code`: active-model implementation exists and OpenRouter direction is already reflected
-- `local-api`: run/log truth, adapter wiring, extended RunRequest with `attachments`, `projectMemory`, and `role` fields, memory prioritization applied before injection
+- `local-api`: run/log truth, adapter wiring, extended RunRequest with `attachments`, `projectMemory`, `role`, `webResults`, and `gitResults` fields
 - `claw-ui`: verification vertical slice is already working
-- `claw-studio`: quiet, chat-first workspace UI with execution modes support
+- `claw-studio`: quiet, chat-first workspace UI with full execution integration
   - image attachments: paste (Ctrl+V), drag & drop, file picker
   - assistant responses: copy-to-clipboard button
   - Project Memory: v1a (storage), v2 (capture flow), v3 (assistant suggestions) all complete
@@ -516,10 +516,12 @@ Current repo state at a glance:
   - run injection: accepted durable memory prioritized and injected into prompt
   - memory prioritization: pinnedItems/currentFocus/decisions/rules with fixed per-section limits
   - attachment awareness: factual acknowledgment in prompt when images present
+  - web search: minimal explicit-trigger search with bounded results
+  - git read tools: safe read-only file reading and git log inspection
 
 Most likely next major area:
 
-- Phase 8F: Web Search (minimal lightweight search capability)
+- Phase 9: Configuration Cleanup (path management, settings unification)
 
 ## Confirmed Decisions
 
@@ -560,6 +562,8 @@ Most likely next major area:
 - ✅ session-level model selection UI wired through local-api (Phase 8C)
 - ✅ lightweight role-based agent modes with prompt shaping (Phase 8D)
 - ✅ deterministic memory prioritization before prompt injection (Phase 8E)
+- ✅ minimal web search with explicit trigger and bounded results (Phase 8F)
+- ✅ minimal git read tools with safe, bounded file reading (Phase 8G)
 - ✅ image attachment support: paste, drag & drop, file picker (Phase 7G-3)
 - ✅ response copy button on assistant messages (Phase 7G-2)
 - ✅ quiet workspace visual polish (Phase 7G-1)
@@ -568,8 +572,8 @@ Most likely next major area:
 
 ## Unresolved Items (Later Phases)
 
-- whether web search should be integrated with memory (Phase 8F)
-- whether git read tools should use MCP or direct subprocess (Phase 8G)
+- whether to add write capability to git tools (later enhancement)
+- whether to add more sophisticated repo browsing (later enhancement)
 - whether the v2 shell needs a stronger top-level project switcher beyond the current rail + expandable panel
 - whether Project Memory should gain explicit quick actions in the workspace header beyond opening the overlay
 - whether run summaries should become richer than the current status + Details grouping
@@ -581,16 +585,26 @@ Most likely next major area:
 
 ## Next Entry Point
 
-- Phases 7F–8E are complete and production-ready
-- the next phase is **Phase 8F: Web Search (minimal)**
-  - lightweight search capability for specific queries
-  - explicit user control and scoped results
-  - integration with memory and context
-  - keep implementation minimal and reversible
-- after Phase 8F, next phases are 8G (git read tools), 9 (configuration cleanup), 10 (packaging)
-- MCP integration should remain for later phases, after core execution modes and tools are stable
+- Phases 7F–8G are complete and production-ready
+- the next phase is **Phase 9: Configuration Cleanup**
+  - improve path management and binary resolution
+  - unify settings presentation
+  - simplify local-api configuration
+  - improve developer experience
+- after Phase 9, next phases are 10 (packaging), 11 (extensions)
+- MCP integration should remain for later phases, after core execution modes, tools, and configuration are stable
 
 ## Change Log
+
+### 2026-04-11 (Updated for Phases 8F/8G Completion)
+
+- **Phase 8F complete**: minimal web search with explicit keyword triggers and bounded 3-5 results
+- **Phase 8G complete**: minimal git read tools with safe file reading, git log, and branch inspection
+- **RunRequest contract extended**: added `webResults` and `gitResults` optional fields
+- **Adapter layer enhanced**: web and git results injected in correct prompt position
+- **Execution pipeline complete**: 8C through 8G all production-ready
+- **Next entry point**: Phase 9 (Configuration Cleanup)
+- **Spec and roadmap synchronized**: all documentation updated with Phase 8F/8G status
 
 ### 2026-04-11 (Updated for Phases 8C/8D/8E Completion)
 

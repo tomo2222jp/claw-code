@@ -156,15 +156,15 @@ Initial architecture, git setup, core dependency structure.
 - priority order: pinnedItems → currentFocus → decisions → rules ✅
 - safe, minimal truncation for long-running sessions ✅
 
-### Phase 8F: Web Search (Minimal) (Planned)
-- optional lightweight web search for specific queries
-- integration with memory and context
-- explicit user control
+### Phase 8F: Web Search (Minimal) (Complete)
+- optional lightweight web search for specific queries ✅
+- integration with memory and context ✅
+- explicit user control and bounded results ✅
 
-### Phase 8G: Git Read Tools (Planned)
-- read-only git log, diff, and blame access
-- scope limited to current project
-- safe subprocess handling
+### Phase 8G: Git Read Tools (Complete)
+- read-only git log, diff, and blame access ✅
+- scope limited to current project ✅
+- safe subprocess handling with bounded results ✅
 
 ### Phase 9: Configuration Cleanup (Planned)
 - path management improvements
@@ -199,6 +199,8 @@ Initial architecture, git setup, core dependency structure.
 - ✅ Model selection (Phase 8C): per-session UI, routed through local-api, backward compatible
 - ✅ Role-based agent modes (Phase 8D): lightweight role system with prompt shaping
 - ✅ Memory prioritization (Phase 8E): deterministic truncation with fixed per-section limits
+- ✅ Web search (Phase 8F): minimal explicit-trigger search with bounded results
+- ✅ Git read tools (Phase 8G): safe read-only file reading and git log inspection
 
 ### Currently Deployed
 - `claw-studio` as primary quiet, chat-first workspace
@@ -210,24 +212,25 @@ Initial architecture, git setup, core dependency structure.
 - `claw-ui` web client for verification
 
 ### Work Location
-Phase 8E (Memory Prioritization) complete. Ready to move to Phase 8F (Web Search minimal) next.
+Phase 8G (Git Read Tools) complete. Ready to move to Phase 9 (Configuration Cleanup) next.
 
 ## Next Implementation Priorities
 
-### 1. Phase 8F: Web Search (Minimal) (Next)
-- optional lightweight web search for specific queries
-- integration with memory and context
-- explicit user control
-
-### 2. Phase 8G: Git Read Tools (Following)
-- read-only git log, diff, and blame access
-- scope limited to current project
-- safe subprocess handling
-
-### 3. Phase 9: Configuration Cleanup (Following)
+### 1. Phase 9: Configuration Cleanup (Next)
 - Improve binary path discovery
 - Unify settings presentation
 - Simplify local-api configuration
+
+### 2. Phase 10: Packaging (Following)
+- Desktop distribution setup
+- userData directory management
+- Installer configuration
+
+### 3. Phase 11: Extensions (Following)
+- Parallel execution support
+- Retry observation and metrics
+- Fallback behavior visibility
+- Review UI enhancements
 
 ## Non-Goals and Not-Now Items
 
@@ -286,37 +289,39 @@ Phase 8E (Memory Prioritization) complete. Ready to move to Phase 8F (Web Search
 | Component | Status | Note |
 |---|---|---|
 | `claw-code` | stable | OpenRouter-first, active model configured |
-| `local-api` | stable | Owns run/log state, accepts extended RunRequest with attachments + projectMemory |
+| `local-api` | stable | Owns run/log state, accepts extended RunRequest with attachments + projectMemory + role + web/git results |
 | `claw-studio` | quiet workspace | Chat-first, image attachments (paste/drag/picker), response copy, low-noise UI |
 | Project Memory v1–v3 | complete | Capture, hygiene, assistant suggestion, durable memory working end-to-end |
-| Execution integration | complete | Memory + attachments wired through run request, adapter injects with minimal prompt augmentation |
+| Execution integration | complete | Memory + attachments + web/git results wired through run request, adapter injects with minimal prompt augmentation |
 | Model selection | complete | Per-session UI in studio, routed through local-api |
 | Role-based modes | complete | Lightweight role system (default/planner/builder/reviewer) with prompt shaping |
 | Memory prioritization | complete | Deterministic truncation with fixed per-section limits before injection |
-| Next phase entry | Phase 8F | Web Search (minimal), explicit user control and scoped results |
+| Web search | complete | Minimal explicit-trigger search with bounded 3-5 results |
+| Git read tools | complete | Safe read-only file reading and git log inspection |
+| Next phase entry | Phase 9 | Configuration Cleanup (path management, settings unification) |
 
 ## Next Entry Point
 
 **For the next chat:**
 
 1. Read `docs/claw-handover-spec.en.md` first to confirm architecture and contracts
-2. Next work is **Phase 8F: Web Search (minimal)**
-   - Implement lightweight search capability for specific user queries
-   - Explicit user control and scoped results only
-   - Integration with memory and context
-3. Phase 8F boundary: `claw-studio` initiates search, `local-api` or adapter routes query
-4. All spec changes must update both JP and EN versions
-5. Keep implementation minimal and reversible
+2. Next work is **Phase 9: Configuration Cleanup**
+   - Improve binary path discovery and resolution
+   - Unify settings presentation
+   - Simplify local-api configuration
+   - Improve developer experience
+3. All spec changes must update both JP and EN versions
+4. Keep implementation minimal and reversible
 
 **Current test entry point:**
 - Run `npm run typecheck && npm run build` in `claw-ui/apps/local-api`
 - Verify no regressions in execution pipeline
-- Manual test: verify model selection, role-based modes, and memory prioritization in logs
-- Check debug logs for "[v1 injection]" messages (memory), "[v1 role]" messages (role), and "[v1 memory]" messages (prioritization)
+- Manual test: verify model selection, role-based modes, memory prioritization, web search, and git read in logs
+- Check debug logs for "[v1 injection]", "[v1 role]", "[v1 memory]", "[v1 web]", and "[v1 git]" messages
 - Verify attachment handling continues to work (paste, drag, picker)
 
 ---
 
 **Last Updated**: 2026-04-11  
 **Aligned With**: `claw-handover-spec.en.md` (latest)  
-**Implementation Status**: Phase 8E (Memory Prioritization) complete, ready for Phase 8F (Web Search minimal)
+**Implementation Status**: Phase 8G (Git Read Tools) complete, ready for Phase 9 (Configuration Cleanup)

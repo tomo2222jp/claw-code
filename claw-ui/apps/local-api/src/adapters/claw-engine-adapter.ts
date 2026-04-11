@@ -33,6 +33,8 @@ export class ClawEngineAdapter implements EngineAdapter {
   startRun(run: EngineAdapterRun, callbacks: EngineAdapterCallbacks): RunningEngineHandle {
     assertSpawnPrerequisites(this.repoRoot, this.clawCliPath);
 
+    const injectedPrompt = buildPrompt(run.prompt, run.projectMemory, run.attachments, run.role);
+
     const args = [
       ...this.clawCliArgsPrefix,
       "--output-format",
@@ -40,9 +42,9 @@ export class ClawEngineAdapter implements EngineAdapter {
       "--model",
       run.settings.activeModel,
       "--permission-mode",
-      "danger-full-access",
+      toCliPermissionMode(run.permissionMode),
       "prompt",
-      run.prompt,
+      injectedPrompt,
     ];
 
     callbacks.onLog("system", `launching claw for run ${run.id}`);
@@ -52,10 +54,39 @@ export class ClawEngineAdapter implements EngineAdapter {
       "system",
       `claw settings: provider=${run.settings.activeProvider} model=${run.settings.activeModel} retryCount=${run.settings.retryCount}`,
     );
+    callbacks.onLog("system", `claw permission mode: ${run.permissionMode}`);
     callbacks.onLog(
       "system",
       "claw precedence: local-api execution settings override repo config for bridged fields",
     );
+    if (run.attachments && run.attachments.length > 0) {
+      callbacks.onLog("system", `[v1 injection] attachments acknowledged: ${run.attachments.length} image(s)`);
+    }
+    if (run.projectMemory) {
+      const memoryKeys = [
+        run.projectMemory.rules ? "rules" : "",
+        run.projectMemory.decisions ? "decisions" : "",
+        run.projectMemory.currentFocus ? "currentFocus" : "",
+        run.projectMemory.pinnedItems ? "pinnedItems" : "",
+      ].filter(Boolean);
+      if (memoryKeys.length > 0) {
+        callbacks.onLog("system", `[v1 injection] project memory applied: ${memoryKeys.join(", ")}`);
+
+        // Log prioritized memory counts
+        const prioritized = prioritizeMemory(run.projectMemory);
+        const pinnedCount = prioritized.pinnedItems?.length ?? 0;
+        const focusCount = prioritized.currentFocus?.length ?? 0;
+        const decisionsCount = prioritized.decisions?.length ?? 0;
+        const rulesCount = prioritized.rules?.length ?? 0;
+        callbacks.onLog(
+          "system",
+          `[v1 memory] prioritized memory applied: pinned=${pinnedCount} focus=${focusCount} decisions=${decisionsCount} rules=${rulesCount}`,
+        );
+      }
+    }
+    if (run.role && run.role !== "default") {
+      callbacks.onLog("system", `[v1 role] role applied: ${run.role}`);
+    }
 
     let child: ChildProcessWithoutNullStreams;
     try {
@@ -156,6 +187,99 @@ export class ClawEngineAdapter implements EngineAdapter {
   }
 }
 
+function buildPrompt(
+  userPrompt: string,
+  projectMemory?: EngineAdapterRun["projectMemory"],
+  attachments?: EngineAdapterRun["attachments"],
+  role?: EngineAdapterRun["role"],
+): string {
+  const parts: string[] = [];
+
+  // Apply memory prioritization before injection
+  const prioritizedMemory = projectMemory ? prioritizeMemory(projectMemory) : undefined;
+
+  // 1. Context preamble when project memory is present
+  const hasMemory =
+    prioritizedMemory !== undefined &&
+    Object.values(prioritizedMemory).some((v) => Array.isArray(v) && v.length > 0);
+
+  if (hasMemory) {
+    parts.push("You are working with the following project context.");
+  }
+
+  // 2. Project memory sections in priority order: pinnedItems → currentFocus → decisions → rules
+  if (prioritizedMemory) {
+    if (prioritizedMemory.pinnedItems && prioritizedMemory.pinnedItems.length > 0) {
+      parts.push("Pinned Context:\n" + prioritizedMemory.pinnedItems.map((item) => `- ${item}`).join("\n"));
+    }
+    if (prioritizedMemory.currentFocus && prioritizedMemory.currentFocus.length > 0) {
+      parts.push("Current Focus:\n" + prioritizedMemory.currentFocus.map((focus) => `- ${focus}`).join("\n"));
+    }
+    if (prioritizedMemory.decisions && prioritizedMemory.decisions.length > 0) {
+      parts.push("Decisions:\n" + prioritizedMemory.decisions.map((decision) => `- ${decision}`).join("\n"));
+    }
+    if (prioritizedMemory.rules && prioritizedMemory.rules.length > 0) {
+      parts.push("Rules:\n" + prioritizedMemory.rules.map((rule) => `- ${rule}`).join("\n"));
+    }
+  }
+
+  // 3. Attachment awareness
+  if (attachments && attachments.length > 0) {
+    const count = attachments.length;
+    const label = count === 1 ? "1 image attachment is" : `${count} image attachments are`;
+    parts.push(`Attached images:\n- ${label} included with this request.`);
+  }
+
+  // 4. Role guidance (additive, only for non-default roles)
+  if (role && role !== "default") {
+    parts.push(buildRoleGuidance(role));
+  }
+
+  // If no context to add, return original prompt unchanged
+  if (parts.length === 0) {
+    return userPrompt;
+  }
+
+  // 5. User request
+  parts.push(`User request:\n${userPrompt}`);
+
+  return parts.join("\n\n");
+}
+
+function prioritizeMemory(
+  memory: EngineAdapterRun["projectMemory"],
+): EngineAdapterRun["projectMemory"] {
+  if (!memory) {
+    return memory;
+  }
+
+  // Fixed per-section limits with priority order: pinnedItems → currentFocus → decisions → rules
+  const limits = {
+    pinnedItems: 3,
+    currentFocus: 3,
+    decisions: 3,
+    rules: 2,
+  };
+
+  return {
+    pinnedItems: memory.pinnedItems ? memory.pinnedItems.slice(0, limits.pinnedItems) : memory.pinnedItems,
+    currentFocus: memory.currentFocus ? memory.currentFocus.slice(0, limits.currentFocus) : memory.currentFocus,
+    decisions: memory.decisions ? memory.decisions.slice(0, limits.decisions) : memory.decisions,
+    rules: memory.rules ? memory.rules.slice(0, limits.rules) : memory.rules,
+  };
+}
+
+function buildRoleGuidance(role: "planner" | "builder" | "reviewer"): string {
+  switch (role) {
+    case "planner":
+      return "Role guidance (planner): Break the task into clear steps and outline an implementation sequence before writing code.";
+    case "builder":
+      return "Role guidance (builder): Implement the task directly and practically.";
+    case "reviewer":
+      return "Role guidance (reviewer): Identify risks, critique the approach, and validate correctness.";
+  }
+}
+
 function resolveDefaultRepoRoot(): string {
   return path.resolve(process.cwd(), "../../..");
 }
@@ -201,6 +325,10 @@ function buildChildEnv(settings: EngineAdapterRun["settings"]): NodeJS.ProcessEn
     NO_COLOR: process.env.NO_COLOR || "1",
     CLICOLOR: "0",
   };
+}
+
+function toCliPermissionMode(permissionMode: EngineAdapterRun["permissionMode"]): string {
+  return permissionMode === "full_access" ? "danger-full-access" : "default";
 }
 
 function flushBufferedLines(

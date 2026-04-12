@@ -8,7 +8,7 @@ import type {
   EngineAdapterRun,
   RunningEngineHandle,
 } from "./engine-adapter.js";
-import type { GitReadResult, WebResult } from "../../../../shared/contracts/index.js";
+import type { AppSettings, GitReadResult, WebResult } from "../../../../shared/contracts/index.js";
 import { performWebSearch, shouldTriggerWebSearch, formatWebResults } from "../services/web-search-service.js";
 
 type ClawEngineAdapterOptions = {
@@ -35,23 +35,46 @@ export class ClawEngineAdapter implements EngineAdapter {
   startRun(run: EngineAdapterRun, callbacks: EngineAdapterCallbacks): RunningEngineHandle {
     assertSpawnPrerequisites(this.repoRoot, this.clawCliPath);
 
-    // Use web results and git results if provided
-    const webResults = run.webResults || [];
-    const gitResults = run.gitResults || [];
+    const webResults = run.webResults ?? [];
+    const gitResults = run.gitResults ?? [];
 
-    const injectedPrompt = buildPrompt(run.prompt, run.projectMemory, run.attachments, run.role, webResults, gitResults);
+    // Resolve execution path: prompt-only disables tool schema injection in the CLI.
+    // - tool-enabled (default): full tool support, permission mode from request
+    // - prompt-only: no tool schemas sent to the API, prevents tool-call loops on
+    //   models that don't handle function calling well (e.g. OpenRouter free tier)
+    const toolMode = run.settings.llmSettings?.toolMode ?? "enabled";
+    const isPromptOnly = toolMode === "disabled";
 
-    const args = [
+    // Both paths inject context (memory, web, git, role, attachments) into the prompt.
+    const injectedPrompt = buildPrompt(
+      run.prompt,
+      run.projectMemory,
+      run.attachments,
+      run.role,
+      webResults,
+      gitResults,
+    );
+
+    // Path-specific CLI flag construction
+    const args: string[] = [
       ...this.clawCliArgsPrefix,
       "--output-format",
       "text",
       "--model",
       run.settings.activeModel,
-      "--permission-mode",
-      toCliPermissionMode(run.permissionMode),
-      "prompt",
-      injectedPrompt,
     ];
+
+    if (isPromptOnly) {
+      // prompt-only path: auto-approve all permissions so the process never blocks
+      // waiting for interactive input. The model receives no tool schemas, so it
+      // responds with plain text and exits cleanly.
+      args.push("--dangerously-skip-permissions");
+    } else {
+      // tool-enabled path: honour the permission mode from the run request
+      args.push("--permission-mode", toCliPermissionMode(run.permissionMode));
+    }
+
+    args.push("prompt", injectedPrompt);
 
     callbacks.onLog("system", `launching claw for run ${run.id}`);
     callbacks.onLog("system", `claw cwd: ${this.repoRoot}`);
@@ -60,7 +83,10 @@ export class ClawEngineAdapter implements EngineAdapter {
       "system",
       `claw settings: provider=${run.settings.activeProvider} model=${run.settings.activeModel} retryCount=${run.settings.retryCount}`,
     );
-    callbacks.onLog("system", `claw permission mode: ${run.permissionMode}`);
+    callbacks.onLog("system", `execution path: ${isPromptOnly ? "prompt-only" : "tool-enabled"}`);
+    if (!isPromptOnly) {
+      callbacks.onLog("system", `claw permission mode: ${run.permissionMode}`);
+    }
     callbacks.onLog(
       "system",
       "claw precedence: local-api execution settings override repo config for bridged fields",
@@ -77,13 +103,11 @@ export class ClawEngineAdapter implements EngineAdapter {
       ].filter(Boolean);
       if (memoryKeys.length > 0) {
         callbacks.onLog("system", `[v1 injection] project memory applied: ${memoryKeys.join(", ")}`);
-
-        // Log prioritized memory counts
         const prioritized = prioritizeMemory(run.projectMemory);
-        const pinnedCount = prioritized.pinnedItems?.length ?? 0;
-        const focusCount = prioritized.currentFocus?.length ?? 0;
-        const decisionsCount = prioritized.decisions?.length ?? 0;
-        const rulesCount = prioritized.rules?.length ?? 0;
+        const pinnedCount = prioritized?.pinnedItems?.length ?? 0;
+        const focusCount = prioritized?.currentFocus?.length ?? 0;
+        const decisionsCount = prioritized?.decisions?.length ?? 0;
+        const rulesCount = prioritized?.rules?.length ?? 0;
         callbacks.onLog(
           "system",
           `[v1 memory] prioritized memory applied: pinned=${pinnedCount} focus=${focusCount} decisions=${decisionsCount} rules=${rulesCount}`,
@@ -105,7 +129,8 @@ export class ClawEngineAdapter implements EngineAdapter {
       child = spawn(this.clawCliPath, args, {
         cwd: this.repoRoot,
         env: buildChildEnv(run.settings),
-        stdio: ["ignore", "pipe", "pipe"],
+        // Use a piped stdin to keep types consistent; we still never write to it.
+        stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
       });
     } catch (error) {
@@ -146,10 +171,15 @@ export class ClawEngineAdapter implements EngineAdapter {
       }
 
       terminalEmitted = true;
-      callbacks.onLog("system", `claw process error: ${error.message}`);
-      callbacks.onStatus(stoppingRequested ? "stopped" : "failed", {
+      const abnormalError = buildAbnormalProcessErrorMessage({
+        error,
+        repoRoot: this.repoRoot,
+        clawCliPath: this.clawCliPath,
+      });
+      callbacks.onLog("system", `claw process error: ${abnormalError}`);
+      callbacks.onStatus(stoppingRequested ? "stopped" : "abnormal_exit", {
         finishedAt: new Date().toISOString(),
-        ...(stoppingRequested ? {} : { errorMessage: `claw process error: ${error.message}` }),
+        ...(stoppingRequested ? {} : { errorMessage: abnormalError }),
       });
     });
 
@@ -179,10 +209,10 @@ export class ClawEngineAdapter implements EngineAdapter {
         return;
       }
 
-      callbacks.onLog("system", `claw process exited abnormally: ${describeExitReason(code, signal)}`);
-      callbacks.onStatus("failed", {
+callbacks.onLog("system", `claw process exited abnormally: ${describeExitReason(code, signal)}`);
+      callbacks.onStatus("abnormal_exit", {
         finishedAt: new Date().toISOString(),
-        errorMessage: buildExitErrorMessage(code, signal, stderrCapture),
+        errorMessage: buildExitErrorMessage(code, signal, stderrCapture, run.settings),
       });
     });
 
@@ -192,6 +222,7 @@ export class ClawEngineAdapter implements EngineAdapter {
           return;
         }
         stoppingRequested = true;
+        callbacks.onStatus("stopping");
         callbacks.onLog("system", `stop requested for claw run ${run.id}`);
         terminateChildProcess(child, callbacks);
       },
@@ -357,13 +388,15 @@ function buildChildEnv(settings: EngineAdapterRun["settings"]): NodeJS.ProcessEn
     CLAW_ACTIVE_PROVIDER_OVERRIDE: settings.activeProvider,
     CLAW_RETRY_COUNT_OVERRIDE: String(settings.retryCount),
     OPENAI_BASE_URL: settings.openaiBaseUrl,
+    ...(settings.apiKey ? { OPENAI_API_KEY: settings.apiKey } : {}),
     NO_COLOR: process.env.NO_COLOR || "1",
     CLICOLOR: "0",
   };
 }
 
 function toCliPermissionMode(permissionMode: EngineAdapterRun["permissionMode"]): string {
-  return permissionMode === "full_access" ? "danger-full-access" : "default";
+  // The current CLI no longer accepts "default"; workspace-write matches legacy default behavior.
+  return permissionMode === "full_access" ? "danger-full-access" : "workspace-write";
 }
 
 function flushBufferedLines(
@@ -401,6 +434,11 @@ function extractFinalOutput(stdout: string): string | undefined {
     return undefined;
   }
 
+  const toolMessage = extractToolMessage(normalized);
+  if (toolMessage) {
+    return toolMessage;
+  }
+
   const candidateBlocks = normalized
     .split(/\r?\n\r?\n+/)
     .map((block) => block.trim())
@@ -408,6 +446,44 @@ function extractFinalOutput(stdout: string): string | undefined {
     .filter((block) => !isNonAnswerBlock(block));
 
   return candidateBlocks.at(-1) ?? normalized;
+}
+
+function extractToolMessage(normalized: string): string | undefined {
+  const lines = normalized
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const jsonMessageLine = [...lines]
+    .reverse()
+    .find((line) => /^\{"message":".+","status":"[^"]+"\}$/.test(line));
+  if (jsonMessageLine) {
+    try {
+      const parsed = JSON.parse(jsonMessageLine) as { message?: unknown };
+      if (typeof parsed.message === "string" && parsed.message.trim()) {
+        return parsed.message.trim();
+      }
+    } catch {
+      // Fall through to plain-text extraction.
+    }
+  }
+
+  const plainTextLine = [...lines]
+    .reverse()
+    .find(
+      (line) =>
+        line !== "Done" &&
+        line !== "\u2714 \u2728 Done" &&
+        !line.startsWith("[active-model]") &&
+        !line.startsWith("{") &&
+        !line.startsWith("}") &&
+        !line.includes("\"sentAt\"") &&
+        !line.includes("\"attachments\"") &&
+        !line.includes("\"message\"") &&
+        !line.startsWith("SendUserMessage") &&
+        !line.includes("Thinking..."),
+    );
+  return plainTextLine;
 }
 
 function isNonAnswerBlock(block: string): boolean {
@@ -427,10 +503,19 @@ function buildExitErrorMessage(
   code: number | null,
   signal: NodeJS.Signals | null,
   trailingStderr: string,
+  settings: AppSettings,
 ): string {
   const reason = describeExitReason(code, signal);
   const stderrSummary = summarizeStderr(trailingStderr);
-  return stderrSummary ? `claw exited with ${reason}: ${stderrSummary}` : `claw exited with ${reason}`;
+  const base = signal
+    ? `abnormal exit (process signal): ${reason}`
+    : `abnormal exit (non-zero code): ${reason}`;
+  const provider = settings.activeProvider;
+  const localHint = buildLocalProviderHint(stderrSummary, provider);
+  if (localHint) {
+    return `${base}: ${localHint}`;
+  }
+  return stderrSummary ? `${base}: ${stderrSummary}` : base;
 }
 
 function describeExitReason(code: number | null, signal: NodeJS.Signals | null): string {
@@ -451,12 +536,85 @@ function summarizeStderr(stderr: string): string {
   return summary.length > 280 ? `${summary.slice(0, 277)}...` : summary;
 }
 
+function isLocalProvider(provider: string): boolean {
+  return provider === "ollama" || provider.startsWith("ollama");
+}
+
+function buildLocalProviderHint(stderrSummary: string, provider: string): string | undefined {
+  if (!stderrSummary) {
+    return undefined;
+  }
+
+  // Only show local/Ollama hints for actual local providers
+  if (!isLocalProvider(provider)) {
+    return undefined;
+  }
+
+  const normalized = stderrSummary.toLowerCase();
+  const isOllamaUnreachable =
+    normalized.includes("econnrefused") ||
+    normalized.includes("connection refused") ||
+    normalized.includes("failed to connect") ||
+    normalized.includes("connect error") ||
+    normalized.includes("127.0.0.1:11434") ||
+    normalized.includes("localhost:11434");
+  if (isOllamaUnreachable) {
+    return "local provider is unreachable; start Ollama and retry";
+  }
+
+  const isModelMissing =
+    /model.+not found/i.test(stderrSummary) ||
+    /unknown model/i.test(stderrSummary) ||
+    /does not exist/i.test(stderrSummary) ||
+    /pull.+model/i.test(stderrSummary);
+  if (isModelMissing) {
+    return "local model is missing; pull the selected model in Ollama and retry";
+  }
+
+  if (normalized.includes("timed out") || normalized.includes("timeout")) {
+    return "local provider request timed out; check Ollama health and model load";
+  }
+
+  return undefined;
+}
+
 function terminateChildProcess(
   child: ChildProcessWithoutNullStreams,
   callbacks: EngineAdapterCallbacks,
 ): void {
-  const killed = child.kill();
-  if (!killed) {
-    callbacks.onLog("system", "claw process was already exiting when stop was requested");
+  try {
+    const killed = child.kill();
+    if (!killed) {
+      callbacks.onLog("system", "claw process was already exiting when stop was requested");
+    }
+  } catch (error) {
+    callbacks.onLog(
+      "system",
+      `failed to terminate claw process: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
+}
+
+function buildAbnormalProcessErrorMessage({
+  error,
+  repoRoot,
+  clawCliPath,
+}: {
+  error: Error & { code?: string; path?: string };
+  repoRoot: string;
+  clawCliPath: string;
+}): string {
+  const code = error.code?.toUpperCase();
+  const targetPath = error.path ?? "";
+
+  if (code === "ENOENT") {
+    return `abnormal exit (spawn failed / missing path): ${targetPath || clawCliPath}`;
+  }
+  if (code === "EACCES") {
+    return `abnormal exit (spawn denied / permission): ${targetPath || clawCliPath}`;
+  }
+  if (targetPath && (targetPath.includes(repoRoot) || targetPath === clawCliPath)) {
+    return `abnormal exit (path error): ${error.message}`;
+  }
+  return `abnormal exit (process error): ${error.message}`;
 }

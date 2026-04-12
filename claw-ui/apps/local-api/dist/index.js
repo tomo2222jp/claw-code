@@ -91,11 +91,11 @@ var ClawEngineAdapter = class {
     }
     let child;
     try {
+      const stdinMode = isPromptOnly ? "ignore" : "pipe";
       child = spawn(this.clawCliPath, args, {
         cwd: this.repoRoot,
         env: buildChildEnv(run.settings),
-        // Use a piped stdin to keep types consistent; we still never write to it.
-        stdio: ["pipe", "pipe", "pipe"],
+        stdio: [stdinMode, "pipe", "pipe"],
         windowsHide: true
       });
     } catch (error) {
@@ -110,14 +110,17 @@ var ClawEngineAdapter = class {
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.on("spawn", () => {
+      callbacks.onLog("system", `[run-${run.id}] child spawned, pid=${child.pid}`);
       callbacks.onStatus("running");
     });
     child.stdout.on("data", (chunk) => {
       stdoutCapture += chunk;
+      callbacks.onLog("system", `[run-${run.id}] stdout chunk: ${chunk.length} bytes`);
       flushBufferedLines(chunk, stdoutState, (line) => callbacks.onLog("stdout", line));
     });
     child.stderr.on("data", (chunk) => {
       stderrCapture += chunk;
+      callbacks.onLog("system", `[run-${run.id}] stderr chunk: ${chunk.length} bytes`);
       flushBufferedLines(chunk, stderrState, (line) => callbacks.onLog("stderr", line));
     });
     child.on("error", (error) => {
@@ -141,6 +144,7 @@ var ClawEngineAdapter = class {
     child.on("close", (code, signal) => {
       flushRemainder(stdoutState, (line) => callbacks.onLog("stdout", line));
       flushRemainder(stderrState, (line) => callbacks.onLog("stderr", line));
+      callbacks.onLog("system", `[run-${run.id}] process close: code=${code}, signal=${signal}, stdoutLen=${stdoutCapture.length}, stderrLen=${stderrCapture.length}`);
       if (terminalEmitted) {
         return;
       }
@@ -153,14 +157,14 @@ var ClawEngineAdapter = class {
         return;
       }
       if (code === 0) {
-        callbacks.onLog("system", "claw process exited successfully");
+        callbacks.onLog("system", `[run-${run.id}] final status: completed (exit code 0)`);
         callbacks.onStatus("completed", {
           finishedAt: (/* @__PURE__ */ new Date()).toISOString(),
           finalOutput: extractFinalOutput(stdoutCapture)
         });
         return;
       }
-      callbacks.onLog("system", `claw process exited abnormally: ${describeExitReason(code, signal)}`);
+      callbacks.onLog("system", `[run-${run.id}] final status: abnormal_exit (code=${code})`);
       callbacks.onStatus("abnormal_exit", {
         finishedAt: (/* @__PURE__ */ new Date()).toISOString(),
         errorMessage: buildExitErrorMessage(code, signal, stderrCapture, run.settings)

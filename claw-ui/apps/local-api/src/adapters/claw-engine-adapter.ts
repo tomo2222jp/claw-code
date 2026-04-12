@@ -126,11 +126,14 @@ export class ClawEngineAdapter implements EngineAdapter {
 
     let child: ChildProcessWithoutNullStreams;
     try {
+      // prompt-only path: close stdin so CLI doesn't try to read it
+      // tool-enabled path: keep stdin piped for interactive permission prompts
+      const stdinMode = isPromptOnly ? "ignore" : "pipe";
+
       child = spawn(this.clawCliPath, args, {
         cwd: this.repoRoot,
         env: buildChildEnv(run.settings),
-        // Use a piped stdin to keep types consistent; we still never write to it.
-        stdio: ["pipe", "pipe", "pipe"],
+        stdio: [stdinMode, "pipe", "pipe"],
         windowsHide: true,
       });
     } catch (error) {
@@ -149,16 +152,19 @@ export class ClawEngineAdapter implements EngineAdapter {
     child.stderr.setEncoding("utf8");
 
     child.on("spawn", () => {
+      callbacks.onLog("system", `[run-${run.id}] child spawned, pid=${child.pid}`);
       callbacks.onStatus("running");
     });
 
     child.stdout.on("data", (chunk: string) => {
       stdoutCapture += chunk;
+      callbacks.onLog("system", `[run-${run.id}] stdout chunk: ${chunk.length} bytes`);
       flushBufferedLines(chunk, stdoutState, (line) => callbacks.onLog("stdout", line));
     });
 
     child.stderr.on("data", (chunk: string) => {
       stderrCapture += chunk;
+      callbacks.onLog("system", `[run-${run.id}] stderr chunk: ${chunk.length} bytes`);
       flushBufferedLines(chunk, stderrState, (line) => callbacks.onLog("stderr", line));
     });
 
@@ -183,9 +189,11 @@ export class ClawEngineAdapter implements EngineAdapter {
       });
     });
 
-    child.on("close", (code, signal) => {
+child.on("close", (code, signal) => {
       flushRemainder(stdoutState, (line) => callbacks.onLog("stdout", line));
       flushRemainder(stderrState, (line) => callbacks.onLog("stderr", line));
+
+      callbacks.onLog("system", `[run-${run.id}] process close: code=${code}, signal=${signal}, stdoutLen=${stdoutCapture.length}, stderrLen=${stderrCapture.length}`);
 
       if (terminalEmitted) {
         return;
@@ -201,7 +209,7 @@ export class ClawEngineAdapter implements EngineAdapter {
       }
 
       if (code === 0) {
-        callbacks.onLog("system", "claw process exited successfully");
+        callbacks.onLog("system", `[run-${run.id}] final status: completed (exit code 0)`);
         callbacks.onStatus("completed", {
           finishedAt: new Date().toISOString(),
           finalOutput: extractFinalOutput(stdoutCapture),
@@ -209,7 +217,7 @@ export class ClawEngineAdapter implements EngineAdapter {
         return;
       }
 
-callbacks.onLog("system", `claw process exited abnormally: ${describeExitReason(code, signal)}`);
+      callbacks.onLog("system", `[run-${run.id}] final status: abnormal_exit (code=${code})`);
       callbacks.onStatus("abnormal_exit", {
         finishedAt: new Date().toISOString(),
         errorMessage: buildExitErrorMessage(code, signal, stderrCapture, run.settings),

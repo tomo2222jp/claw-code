@@ -1,239 +1,64 @@
-# Claw Handover Spec (LLM Companion)
+# Claw Handover Spec (English)
 
-## Status
+## Source Of Truth
 
-This file is the English LLM/tooling companion to:
+- This file is the English companion to the Japanese handover spec
+- Japanese primary: `docs/claw-handover-spec.md`
+- New chats should read the primary spec first
+- When updating the spec, update both JP and EN in the same work unit
 
-- `C:\temp\claw-code\docs\claw-handover-spec.md`
-
-Use this file when prompting GPT/Codex or other tooling that benefits from an English, stable, grep-friendly handover format.
-
-The Japanese file remains the canonical human-facing handover spec.  
-Both files should be updated in the same work unit whenever the spec changes.
-
-Recommended opener:
-
-> First read `C:\temp\claw-code\docs\claw-handover-spec.en.md` before making implementation or design decisions. If the spec needs to change, describe the change and get agreement before implementing it.
+---
 
 ## Purpose
 
-This document keeps `claw-code`, `claw-ui`, and `claw-studio` aligned across chats and implementation cycles.
+This spec fixes the responsibility boundaries, current state, and next entry points for `claw-code` / `claw-ui` / `claw-studio`.
 
-It defines:
-
-- the current architecture
-- the fixed boundaries
-- what is already implemented
-- what the current priorities are
-- what future chats should treat as true
-
-## Product Direction
-
-Current product direction:
-
-- Engine repo: `claw-code`
-- Provider path: OpenRouter-first
-- Primary UI: `claw-studio` desktop workspace UI
-- Secondary UI: `claw-ui` web client for verification and debugging
-
-Long-term goal:
-
-- use `claw-code` as the engine
-- build a coding-agent workflow and workspace around it
-
-## Roles
-
-- User: final product direction, priority decisions, boundary decisions
-- GPT / ChatGPT: planning, review, handoff shaping, repo-level judgment
-- Codex: implementation, file edits, build/test verification
+---
 
 ## Fixed Architecture
 
 ### Layering
 
-The current layered split is fixed:
-
 1. UI Layer
    - `apps/claw-studio` = primary desktop workspace UI
    - `claw-ui/apps/web-ui` = verification web client
-2. App API Layer
-   - `claw-ui/apps/local-api` = state owner
+
+2. API Layer
+   - `claw-ui/apps/local-api` = state owner / run coordinator
+
 3. Engine Layer
-   - `claw-code` runtime and execution bridge
+   - `claw-code` = execution engine
 
-### Fixed Boundaries
+---
 
-- `local-api` owns run lifecycle, run status, logs, final output, and stop state
-- adapter / execution bridge owns execution concerns only
-- `claw-studio` owns mirrored timeline and workspace/session UX only
-- `claw-studio` must not become the run truth
-- `shared/contracts` is the shared boundary for run-related types
+## Fixed Boundaries
 
-### Non-Goals
+- `local-api` is the **truth owner** for run lifecycle / status / logs / final output
+- execution adapter holds execution concerns only
+- `claw-studio` is mirrored UI only
+- `claw-studio` does not own run truth
+- `shared/contracts` is the run-related shared boundary
 
-Do not do these accidentally:
+---
 
-- collapse UI and engine concerns together
-- turn `claw-studio` into the state owner
-- push broad UI concerns into the adapter
-- casually redesign contracts during UI work
-- replace `claw-ui` instead of keeping it as the verification client
+## UI Policy
 
-## Engine Decisions
+- Maintain chat-first / quiet UI
+- composer is the primary actor
+- timeline is the primary axis
+- Details panel for deeper information
 
-### Active Model
+---
 
-`claw-code` uses an active-model approach rather than ad hoc model selection.
+## Model / Settings Policy
 
-Core settings:
+- `local-api` is the truth owner for settings
+- `claw-studio` handles input and display only
+- Separate runtime tuning from model selection
 
-- `active_provider`
-- `active_model`
-- `fallback_provider`
-- `fallback_model`
-- `retry_count`
+---
 
-### OpenRouter Policy
-
-OpenRouter is the default provider direction for current development.
-
-- `active_provider=openrouter`
-- `active_model` should use the OpenRouter model id
-- transport may still use OpenAI-compatible paths internally
-
-This is why logs may show both:
-
-- `selected_provider=openai`
-- `provider_intent=openrouter`
-
-That split is currently expected.
-
-### Permission Mode
-
-Current supported permission modes:
-
-- `default`
-- `full_access`
-
-Shared contract:
-
-```ts
-type PermissionMode = "default" | "full_access";
-
-type ImageAttachment = {
-  id: string;
-  data: string;  // base64 data URL
-  mimeType: string;
-};
-
-type InjectedProjectMemory = {
-  rules?: string[];
-  decisions?: string[];
-  currentFocus?: string[];
-  pinnedItems?: string[];
-};
-
-type RunRequest = {
-  prompt: string;
-  permissionMode?: PermissionMode;
-  attachments?: ImageAttachment[];
-  projectMemory?: InjectedProjectMemory;
-};
-```
-
-Rules:
-
-- missing `permissionMode` falls back to `default`
-- invalid `permissionMode` falls back to `default`
-- existing `{ prompt }` clients must keep working unchanged
-- `attachments` carries pasted/dragged/selected image files (pass-through)
-- `projectMemory` carries only accepted durable memory (rules, decisions, focus, pinned)
-- pending/suggested memory is never included
-- empty memory sections are excluded from payload
-
-Execution bridge mapping:
-
-- `default -> --permission-mode workspace-write`
-- `full_access -> --permission-mode danger-full-access`
-- `projectMemory` → minimal prompt injection (if present)
-- `attachments` → factual acknowledgment in prompt (if present)
-
-## Model Selection Policy
-
-LLM selection must follow the same boundary rules as other execution-affecting settings.
-
-Current policy:
-
-- provider/model truth remains with `local-api` and the execution path behind it
-- `claw-studio` may expose model-selection UX, but it must not silently become the source of truth
-- any execution-affecting model choice must flow through `shared/contracts -> local-api -> execution bridge`
-- existing clients must remain compatible when model-related inputs are expanded
-
-Implementation direction:
-
-- short term: `claw-studio` may show or prepare model-selection UI, but execution truth stays aligned with `local-api` settings
-- medium term: if per-session model selection is added, it must still be normalized by `local-api`
-- do not add renderer-only model-selection behavior that bypasses `local-api`
-
-## Preferred Models
-
-Current preferred model direction:
-
-- Primary implementation and validation model: `openai/gpt-oss-120b:free`
-
-Current provider direction:
-
-- Preferred provider intent: `openrouter`
-
-Practical meaning:
-
-- new work should assume `openai/gpt-oss-120b:free` is the first model to validate against
-- UI and logs should remain understandable even when transport/provider display differs from provider intent
-- other models may be evaluated later, but they are not current implementation priorities unless explicitly added to the spec
-
-Not yet fixed:
-
-- fallback model policy for production use
-- model ranking UI in `claw-studio`
-- session-level model persistence behavior
-
-## LLM Selection Policy
-
-Current product direction for normal UX:
-
-- present the product as if it uses a single default AI
-- keep advanced provider/model selection out of the normal workspace surface
-
-Internal direction:
-
-- keep the architecture multi-LLM capable
-- `local-api` remains the truth owner for LLM settings
-- `claw-studio` may expose input/display for settings but must not become the truth owner
-
-Recommended internal shape:
-
-- `executionMode` = `cloud | local`
-- `provider`
-- `modelId`
-
-Recommended UX:
-
-- `Standard` = product-default AI
-- `Local` = local LLM mode
-- `Advanced` = explicit provider/model selection
-
-Rule:
-
-- keep normal UX simple for general users
-- keep the internal design extensible for future multi-LLM support
-- keep runtime tuning values such as stop timeout separate from the LLM settings shape
-- manage runtime tuning values through `local-api` settings, not through the LLM selection path
-
-## Cloud Provider Taxonomy
-
-Cloud-provider naming must be explicit and stable at the `local-api` boundary.
-
-Fixed cloud provider ids:
+## Cloud Provider Taxonomy (Fixed)
 
 - `google`
 - `openrouter`
@@ -242,909 +67,217 @@ Fixed cloud provider ids:
 
 Rules:
 
-- `executionMode=cloud` means `provider` must resolve to one of the fixed cloud provider ids above
-- `executionMode=local` is a separate path and must not be conflated with cloud-provider billing or routing
-- keep `provider` as the execution/billing path identifier, not as a vague model-family label
-- future providers may be added later, but they must be added deliberately to the taxonomy rather than inferred from model names
+- provider represents routing / billing path
+- Do not infer provider from model name
+- `executionMode=local` is treated separately
 
-## Gemini Routing Policy
+---
 
-Gemini direct and Gemini-via-OpenRouter are separate execution paths and must stay distinguishable.
+## 🚨 Execution Architecture (NEW)
 
-Rules:
+### Background
 
-- `provider=google` means direct Google API / Google billing / Google endpoint
-- `provider=openrouter` with a Gemini-family `modelId` means OpenRouter routing and OpenRouter billing, even if the underlying model family is Gemini
-- Gemini model family naming must not silently imply `provider=google`
-- OpenRouter Gemini usage must remain a valid option, but it is not the same path as Google direct
-- logs and diagnostics should make the chosen provider path understandable without requiring users to infer it from transport details
+The previous architecture used a single path based on CLI + tool, which caused:
 
-Practical interpretation:
+- OpenRouter free models do not support tools
+- CLI stdin hang (Thinking fixation)
+- Failures due to excessive context
 
-- `google + gemini-*` = Gemini direct
-- `openrouter + google/gemini-*` or another Gemini-family OpenRouter model id = Gemini through OpenRouter
+---
 
-## Standard Provider Default
+### Decision
 
-Standard mode should now prefer direct Gemini rather than Gemini hidden behind OpenRouter.
+**Split execution into two separate paths**
 
-Current default:
+---
 
-- `executionMode=cloud`
-- `provider=google`
-- `modelId=gemini-2.5-flash`
-- `profile=standard`
+### Execution Paths
 
-Rules:
+#### 1. tool-enabled (legacy)
 
-- Standard must remain a single-default-AI experience in the UI
-- `claw-studio` may show `Standard`, but `local-api` owns the actual resolved provider/model
-- if Standard defaults change later, they should be changed in one place at the `local-api` settings-resolution layer
+- Via CLI
+- Tool usage enabled
+- Targets:
+  - GPT
+  - Gemini
+  - Claude
 
-## Advanced Provider Policy
+---
 
-Advanced mode is the explicit provider-selection surface.
+#### 2. prompt-only (new)
 
-Rules:
+- Direct API (fetch)
+- No tools
+- Minimal payload (model + messages only)
 
-- Advanced must allow explicit provider choice among the supported cloud taxonomy values
-- Advanced may also choose `executionMode=local` for local-provider use, but that remains separate from cloud taxonomy
-- provider choice must remain explicit in saved `llmSettings`
-- `claw-studio` stays input/display only and must not own resolution logic
-- `local-api` remains the truth owner for provider/model resolution and compatibility fallback
+Targets:
 
-## Current Apps
+- OpenRouter free models
+- Lightweight / low-cost models
 
-### `claw-ui`
+---
 
-Role:
+### Routing
 
-- verification web client
-- vertical-slice validation surface
-- API behavior and observability checks
+```ts
+enableTools === true  → tool-enabled
+enableTools === false → prompt-only (default)
+```
 
-Primary docs:
+---
 
-- `C:\temp\claw-code\claw-ui\docs\vertical-slice.md`
-- `C:\temp\claw-code\claw-ui\docs\next-phases.md`
+### Key Rules
 
-### `claw-studio`
+- prompt-only does not go through the CLI
+- Does not send tool schema
+- Does not send thinking parameter
 
-Role:
+---
 
-- primary desktop workspace UI
-- project/session/timeline/composer workspace
-- mirrored run experience over `local-api`
+### Effects
 
-Current UI direction:
+- CLI hang resolved
+- OpenRouter free model support
+- Simplified execution path established
 
-- left sidebar for projects and sessions
-- compact top bar
-- central timeline
-- bottom composer
-- chat-first / minimal normal view
-- sessions and Project Memory are accessed via rail-triggered overlay panels
-- overlay panels are mutually exclusive
-- overlay panels support toggle close, backdrop click close, and Esc close
-- run information is de-emphasized in normal view and accessible via Details
-- assistant labels are minimized and only shown on user -> assistant transitions
-- debug and run details are always behind Details
+---
 
-Current UI behavior:
+## Current Model Strategy
 
-- composer is fixed at the bottom of the center pane and acts as the primary interaction focus
-- timeline is the only scrolling area
-- normal view prioritizes user / assistant conversation flow over execution details
-- run information is displayed minimally (status + Details) and not as a primary UI element
-- assistant labels are conditionally rendered to reduce repetition noise
-- sessions and Project Memory are opened via rail-triggered overlays
-- overlays are exclusive and closing returns focus to the originating rail control
-- stdout / stderr / metadata stay inside Details
+### Primary
 
-## UI Direction Refinement
+```
+deepseek/deepseek-v3.2
+```
 
-`claw-studio` should remain coding-tool-first rather than settings-heavy.
-
-- the normal workspace view must stay minimal and low-noise
-- advanced controls must not be always visible in the main workspace
-- advanced features should live behind Details, panels, or secondary views
-- workspace focus (`compose -> run -> inspect`) is prioritized over UI richness
-- the sidebar should default to a collapsed icon rail rather than an always-expanded menu
-
-Additional rules:
-
-- project memory and settings must not dominate the main work surface
-- new features must preserve a simple, mock-like mental model
-- always-visible UI chrome should be minimized
-
-## Current Implementation Status
-
-### `local-api`
-
-Implemented endpoints:
-
-- `GET /api/health`
-- `GET /api/settings`
-- `POST /api/settings`
-- `POST /api/run`
-- `GET /api/run/:id/status`
-- `GET /api/run/:id/logs`
-- `POST /api/run/:id/stop`
-
-Implemented responsibilities:
-
-- settings JSON management
-- run and log state ownership
-- real claw adapter wiring
-- settings precedence
-- `permissionMode` normalization and bridge wiring
+Reasons:
 
-Settings precedence:
+- Stable operation confirmed
+- Strong coding performance
+- High cost efficiency
 
-- for local-api initiated runs, saved local-api settings are authoritative
-- bridged fields:
-  - `activeProvider`
-  - `activeModel`
-  - `retryCount`
-  - `openaiBaseUrl`
-
-### `claw-ui/web-ui`
-
-Implemented:
-
-- Run / Settings / Logs pages
-- observability improvements
-- build and typecheck checks
-- remains the verification UI
-
-### `claw-studio`
+---
 
-Implemented:
+### Secondary
 
-- Electron + React + TypeScript shell
-- project / session navigation
-- timeline display with quiet, low-noise styling
-- composer with multi-method image attachments
-  - Enter to send
-  - Shift+Enter for newline
-  - auto-grow
-  - Ctrl+V image paste
-  - drag & drop image support
-  - file picker button for image selection
-- image attachment display as compact removable chips
-- ja / en locale switching
-- local-api health connection
-- run start with attachments and project memory
-- status / logs / final output mirroring via polling
-- mirrored timeline view
-- Jump to latest
-- auto-scroll only when already near the bottom
-- session persistence first version
-- permission mode selector UI
-- `permissionMode` wiring into the run request path
-- response copy button on assistant messages with temporary "Copied" feedback
-- debug information behind Details
-- collapsed icon rail default
-- expandable sidebar panel for projects and sessions
-- right-side Project Memory overlay
-- project-scoped memory persistence (`projectMemoryByProjectId`)
-- lightweight Project Memory edit mode
-- Project Memory v2 capture flow (timeline → pending review → durable memory)
-- Project Memory v3 assistant suggestion detection and deduplication
-- workspace context strip for project / memory / session framing
-- shell polish: de-emphasized run/status events, reduced Details weight, improved hierarchy
+```
+meta-llama/llama-3.3-70b-instruct:free
+nousresearch/hermes-3-llama-3.1-405b:free
+```
 
-Current UI behavior:
+※ Unstable (429 / provider constraints)
 
-- composer is fixed at the bottom of the center pane
-- timeline is the only scrolling area
-- normal view prioritizes user / assistant / run status
-- stdout / stderr / metadata stay inside Details
-- Project Memory stays secondary and opens as a right overlay
-- run requests carry composed text, pasted/dropped/selected image attachments, and accepted durable project memory
+---
 
-## Runtime / Execution (Planned Improvements)
+## API Key Policy (Provisional)
 
-The current run execution model keeps `local-api` as the state owner and uses the adapter as the boundary to the engine.
+- Held by `local-api`
+- `claw-studio` handles input only
+- Overwrite on save is prevented (empty string retains existing value)
+- Future: planned migration to secret store
 
-Future improvements in Phase 9.5 will focus on:
+---
 
-- run state stability
-- reliable stop / cancel behavior
-- streaming / progressive output
-- clear error classification and visibility
-- retry handling
-- logs / details readability
+## Current Status
 
-These improvements must preserve the existing architecture.
+### claw-studio
 
-The following must remain true:
+- UI complete (quiet workspace)
+- Model selection implemented
+- prompt-only support in place
 
-- `local-api` remains the single source of truth for run state
-- the adapter remains the integration boundary for prompt, context, and tools
-- the UI must not depend directly on internal run mechanics
+---
 
-## Persistence Policy
+### local-api
 
-`claw-studio` session persistence first version is implemented.
+- Execution split implemented
+- `DirectApiEngineAdapter` introduced
+- Safe JSON parsing implemented
+- API key overwrite prevention implemented
 
-Storage:
-
-- Electron `userData/studio-state.json`
-
-Responsibility split:
-
-- main: file path resolution and file I/O only
-- preload: `loadStudioState()` / `saveStudioState()` only
-- renderer store: hydration and debounced saving
-
-Persisted data:
-
-- `projects`
-- `sessions`
-- `timelineBySessionId`
-- `projectMemoryByProjectId`
-- `selectedProjectId`
-- `selectedSessionId`
-- `locale`
-- `sidebarCollapsed`
-
-Not persisted:
-
-- active run truth
-- local-api health truth
-- polling state
-- running process restoration state
-
-Rule:
-
-- run truth must not be restored from persisted studio state
-
-## Project Memory (Planned)
-
-Project Memory is introduced as project-scoped long-lived context for `claw-studio`.
-
-Purpose:
-
-- preserve important project context across sessions
-- separate project-level rules and decisions from session timeline history
-- reduce repeated context restatement
-
-Boundary rules:
-
-- Project Memory belongs to `claw-studio` workspace responsibility
-- Project Memory is not run truth
-- Project Memory is separate from session timeline
-- v1a includes storage and editing only
-- execution injection is a later phase
-
-V1a direction:
-
-- persist project memory separately from timeline state
-- keep memory UI minimal and secondary
-- memory must not appear as a dominant UI surface
-- optimize for human readability and manual editing
-
-Current implementation status:
-
-- project-scoped memory storage is implemented in `claw-studio`
-- memory is persisted separately from timeline/session history
-- memory opens in a right-side overlay
-- lightweight manual editing is implemented
-- Project Memory v1a, v2, v3 all implemented with full lifecycle
-- execution injection is implemented: accepted durable memory is carried in RunRequest
-- adapter layer injects memory into prompt minimally and conditionally
-- run requests include: `prompt`, `attachments`, `projectMemory` (durable items only)
-- pending/suggested memory is never injected
-
-V2 direction:
-
-- timeline items may expose subtle capture actions for user-explicit memory saving
-- capture must stage a reviewable candidate before any durable memory write
-- accepted `rule` / `decision` / `current_focus` candidates promote into durable Project Memory fields
-- accepted `pinned` items may stay in a small overlay-only pinned section rather than expanding the durable memory schema
-- pending review must live inside the Project Memory overlay, not as a separate dashboard surface
-
-V2 hygiene direction:
-
-- overlay sections should stay structured as Summary / Rules / Decisions / Current Focus / Pinned / Pending Review
-- empty durable sections should be hidden when possible, while Pending Review may show a minimal empty state
-- exact-duplicate durable accepts should be ignored rather than duplicated
-- durable memory items and pinned items must support lightweight removal
-- long text should stay readable via clamp-first display with a simple way to expand
-
-V3 assistant-suggested direction:
-
-- assistant-suggested memory must stay subtle and user-controlled
-- suggestions should appear only on eligible assistant/final-output timeline items
-- the first implementation should use simple renderer/store heuristics rather than a new LLM call
-- suggestion buttons should stage into Pending Review rather than writing durable memory directly
-- durable memory still changes only after the existing accept flow
-- suggestion state may stay lightweight and derived as long as dismissed suggestions do not immediately reappear
-
-Future direction:
-
-- allow user-explicit memory saving (`remember this`)
-- allow assistant-suggested memory candidates
-- memory updates must be reviewable and never silently auto-persisted
-
-## Persistence Extension (Planned)
-
-New persisted structure:
-
-- `projectMemoryByProjectId`
-- `projectMemoryCandidatesByProjectId`
-
-Rules:
-
-- it must remain separate from timeline and session state
-- it must not restore run truth
-
-## Context Management
-
-Long-context usage is planned around three ideas:
-
-- Context Guard
-- Context Compression
-- Session Rollover
-
-Current intent:
-
-- start new sessions deliberately instead of keeping a single endless session
-- rollover should include a user-reviewable handoff
-- exact behavior is still a later phase
-
-## Current Phase
-
-Current primary phase:
-
-- `claw-ui`: verification UI
-- `claw-studio`: execution workspace phase
-
-Current main priorities:
-
-1. improve `claw-studio` operator usability
-2. refine Details into clearer metadata / output / diagnostics groupings
-3. shape context-management behavior
-4. improve config and path handling
-5. prepare for packaging later
-
-## Fixed Constraints
-
-The following must stay true unless the spec is explicitly changed:
-
-- keep the three-layer split
-- keep `local-api` as the state owner
-- keep adapter as execution bridge only
-- keep `claw-studio` as a mirrored workspace UI rather than run truth
-- keep OpenRouter as the current provider direction
-- keep `selected_provider=openai / provider_intent=openrouter` as an expected normal state
-- keep `claw-ui` as the verification client
-- keep existing-client compatibility in mind for contract changes
-
-## Work Rules For The Next Chat
-
-Every next chat should follow this order:
-
-1. read this file first
-2. do not assume older chat memory is still correct if this file says otherwise
-3. if a spec change is needed, describe it and record it in both spec files
-4. prioritize `claw-studio` unless explicitly told otherwise
-5. do not break `local-api` truth / state-owner boundaries
-6. treat `claw-studio` as display/workspace responsibility first
-
-## Current Summary
-
-## Current Phase
-
-Current primary phase:
-
-- Phase 7G UI simplification: completed
-- next phase: Phase 9.5 Runtime strengthening
-
-Current main priorities:
-
-1. strengthen runtime robustness and lifecycle handling
-2. refine run-state visibility without breaking chat-first UX
-3. improve error, stop, and abnormal-exit handling
-4. maintain strict local-api state ownership
-5. prepare runtime behavior for packaging and multi-environment stability
-
-Current repo state at a glance:
-
-- `claw-code`: active-model implementation exists and OpenRouter direction is already reflected
-- `local-api`: run/log truth, adapter wiring, extended RunRequest with `attachments`, `projectMemory`, `role`, `webResults`, and `gitResults` fields
-- `claw-ui`: verification vertical slice is already working
-- `claw-studio`: quiet, chat-first workspace UI with full execution integration
-  - Phase 7G UI simplification is complete
-  - composer is the primary interaction surface
-  - timeline is the only scrolling area
-  - sessions and Project Memory are rail-triggered overlays
-  - overlays are exclusive and return focus to the originating rail control on close
-  - run information stays minimized in normal view and lives behind Details
-  - image attachments: paste (Ctrl+V), drag & drop, file picker
-  - assistant responses: copy-to-clipboard button
-  - Project Memory: v1a (storage), v2 (capture flow), v3 (assistant suggestions) all complete
-  - model selection: per-session UI, saved through local-api settings
-  - role-based modes: default/planner/builder/reviewer with prompt shaping
-  - run injection: accepted durable memory prioritized and injected into prompt
-  - memory prioritization: pinnedItems/currentFocus/decisions/rules with fixed per-section limits
-  - attachment awareness: factual acknowledgment in prompt when images present
-  - web search: minimal explicit-trigger search with bounded results
-  - git read tools: safe read-only file reading and git log inspection
-
-Most likely next major area:
-
-- Phase 9: Configuration Cleanup (path management, settings unification)
+---
 
 ## Confirmed Decisions
 
-- `claw-studio` remains the primary UI and should keep a coding-tool-first workspace shell
-- workspace polish should improve framing and readability without moving execution truth away from `local-api`
-- Project Memory remains a secondary surface; lightweight inline context is acceptable, but the full editor stays in the right overlay
-- normal timeline view should stay low-noise, with deeper run output still living behind Details
-- Project Memory v2 uses user-explicit capture with pending review before durable memory writes
-- accepted `pinned` items may remain overlay-only instead of changing the durable memory fields
-- Project Memory hygiene should prefer low-noise readability over richer management UI
-- Project Memory v3 should keep assistant suggestions subtle on assistant/final-output items and must never auto-save durable memory
-- assistant suggestions should stage into the same Pending Review gate rather than creating a second review surface
-- Project Memory v2 capture flow is implemented
-  - timeline items provide subtle capture actions:
-    - `Pin`
-    - `Save as Rule`
-    - `Save as Decision`
-    - `Save as Current Focus`
-  - capture creates a pending candidate first
-  - durable memory updates only via `Accept` from Pending Review
-  - `Dismiss` prevents promotion to durable memory
-- Project Memory hygiene is implemented
-  - exact duplicate prevention applies on durable accept
-  - remove actions exist for Rules / Decisions / Current Focus / Pinned
-  - `updatedAt` updates on accept and remove
-  - the memory overlay uses Summary / Rules / Decisions / Current Focus / Pinned / Pending Review
-  - empty states are defined for both memory and pending
-- UI remains coding-tool-first and low-noise
-  - capture actions stay subtle and hover/focus-first
-  - Project Memory overlay remains secondary
-  - normal timeline structure remains unchanged
-- Git tooling stays phased and conservative
-  - Phase 8G is read-only repository context only
-  - no git write path is active in the adapter or UI
-  - Controlled Git Write is planned for a later phase only
-- cloud provider taxonomy is fixed at:
-  - `google`
-  - `openrouter`
-  - `openai`
-  - `anthropic`
-- Gemini direct and Gemini through OpenRouter are separate paths and must never be treated as the same provider route
-- Standard should default to direct Gemini:
-  - `executionMode=cloud`
-  - `provider=google`
-  - `modelId=gemini-2.5-flash`
-- Advanced is the explicit provider-selection path and should be the place where OpenRouter vs Google direct is chosen deliberately
-
-## Resolved Items
-
-- ✅ execution injection from Project Memory into run context (Phase 8A)
-- ✅ minimal prompt injection of accepted durable memory (Phase 8B-1)
-- ✅ factual attachment awareness in prompt (Phase 8B-2)
-- ✅ session-level model selection UI wired through local-api (Phase 8C)
-- ✅ lightweight role-based agent modes with prompt shaping (Phase 8D)
-- ✅ deterministic memory prioritization before prompt injection (Phase 8E)
-- ✅ minimal web search with explicit trigger and bounded results (Phase 8F)
-- ✅ minimal git read tools with safe, bounded file reading (Phase 8G)
-- ✅ Phase 9A tool abstraction (v1): shared tool-context collection for web + git (local-api only)
-- ✅ image attachment support: paste, drag & drop, file picker (Phase 7G-3)
-- ✅ response copy button on assistant messages (Phase 7G-2)
-- ✅ quiet workspace visual polish (Phase 7G-1)
-- ✅ Project Memory v1–v3 complete with full lifecycle
-- ✅ duplicate handling with exact-match and normalized suppression
-
-## Unresolved Items (Later Phases)
-
-- Controlled Git Write is planned, not implemented
-- whether git write should require explicit diff preview and confirmation before execution
-- whether to add write capability to git tools (later enhancement)
-- whether to add more sophisticated repo browsing (later enhancement)
-- whether the v2 shell needs a stronger top-level project switcher beyond the current rail + expandable panel
-- whether Project Memory should gain explicit quick actions in the workspace header beyond opening the overlay
-- whether run summaries should become richer than the current status + Details grouping
-- whether pinned items should later gain ordering controls beyond simple add/remove
-- whether suggestion heuristics should later become configurable or remain fixed/simple
-- whether later phases should expose a lightweight way to permanently dismiss a suggestion source beyond hidden rejected candidates
-- memory ranking and prioritization for long-running sessions (Phase 8E)
-- multimodal image consumption when CLI supports it (future)
-- whether `local-api` should enforce a strict cloud-provider allowlist at route-validation time or only at resolution time
-- whether Standard should later move from a fixed direct-Gemini default to a named remotely configurable profile
-- how much provider-path visibility should be shown in normal UI versus only in Advanced/settings/debug surfaces
-
-## Next Entry Point
-
-- Phases 7F–8G are complete and production-ready
-- the next phase is **Phase 9B: Configuration Cleanup**
-  - improve path management and binary resolution
-  - unify settings presentation
-  - simplify local-api configuration
-  - improve developer experience
-- after Phase 9, the planned sequence is:
-  - Phase 10: Controlled Git Write (planned, not implemented)
-  - Phase 11: Packaging
-  - Phase 12: Extensions
-- MCP integration should remain for later phases, after core execution modes, tools, and configuration are stable
-- next provider/settings slice should:
-  - move Standard resolution to `google / gemini-2.5-flash`
-  - preserve legacy fallback when `llmSettings` is absent or invalid
-  - keep OpenRouter as an explicit alternative provider rather than an implicit Gemini path
-
-## Provider Design Update (2026-04-12)
-
-### Confirmed Decisions
-
-- `local-api` remains the truth owner for provider/model resolution.
-- Cloud provider taxonomy is fixed to `google`, `openrouter`, `openai`, and `anthropic`.
-- Gemini direct is represented by `provider=google`.
-- Gemini through OpenRouter is represented by `provider=openrouter` plus an OpenRouter Gemini-family model id.
-- Standard mode should resolve to direct Gemini by default:
-  - `executionMode=cloud`
-  - `provider=google`
-  - `modelId=gemini-2.5-flash`
-  - `profile=standard`
-- Advanced remains the explicit provider-selection surface.
-
-### Unresolved Items
-
-- whether route-time validation should reject unknown cloud provider ids immediately
-- whether Standard defaults should later become remotely configurable instead of fixed
-- how strongly normal UI should expose the active provider path versus keeping it mostly inside Advanced/debug surfaces
-
-### Next Entry Point
+- execution path is dual structure — not to be overridden
+- prompt-only is treated as a first-class execution path
+- OpenRouter free models use prompt-only exclusively
+- `local-api` truth owner maintained
+- `claw-studio` kept as UI-only
+- Cloud provider taxonomy fixed: `google / openrouter / openai / anthropic`
+- Google direct and OpenRouter-via-Gemini are treated as separate paths
 
-- implement `local-api` provider resolution against the fixed taxonomy
-- ensure Standard maps to Google direct Gemini by default
-- keep legacy fallback for missing/invalid `llmSettings`
-- preserve explicit separation between Google direct Gemini and OpenRouter Gemini
+---
 
-## Change Log
+## Next Entry Points
 
-### 2026-04-11 (Updated for Phases 8F/8G Completion)
+1. Stabilize model selection UI
+2. Improve API key settings UI
+3. Model capability labeling
+4. Prompt optimization
 
-- **Phase 8F complete**: minimal web search with explicit keyword triggers and bounded 3-5 results
-- **Phase 8G complete**: minimal git read tools with safe file reading, git log, and branch inspection
-- **RunRequest contract extended**: added `webResults` and `gitResults` optional fields
-- **Adapter layer enhanced**: web and git results injected in correct prompt position
-- **Execution pipeline complete**: 8C through 8G all production-ready
-- **Next entry point**: Phase 9 (Configuration Cleanup)
-- **Spec and roadmap synchronized**: all documentation updated with Phase 8F/8G status
+---
 
-### 2026-04-11 (Updated for Phases 8C/8D/8E Completion)
+## Work Rules
 
-- **Phase 8C complete**: per-session model selection UI implemented in `claw-studio`, wired through `local-api` without breaking state ownership
-- **Phase 8D complete**: lightweight role-based agent modes (default, planner, builder, reviewer) with mode-specific prompt shaping
-- **Phase 8E complete**: deterministic memory prioritization before prompt injection with fixed per-section limits (pinnedItems: 3, currentFocus: 3, decisions: 3, rules: 2)
-- **RunRequest contract extended**: added `role?: AgentRole` field for mode selection
-- **Adapter layer enhanced**: memory prioritization applied in `buildPrompt()` before prompt construction, with debug logging
-- **Next entry point**: Phase 8F (Web Search minimal)
-- **Spec and roadmap synchronized**: all four documentation files updated with current implementation status
+1. Read this file first
+2. Record all spec changes
+3. Do not break `local-api` responsibility boundaries
+4. Keep `claw-studio` as UI-only
 
-### 2026-04-11 (Updated for Phase 8B Completion)
+---
 
-- **Phases 7G-1/2/3 complete**: quiet workspace, response copy, image attachments (paste/drag/picker)
-- **Phase 8A complete**: run request carries attachments and accepted durable project memory
-- **Phase 8B-1/2 complete**: adapter injects memory and attachment awareness into prompt
-- **Contract updated**: RunRequest now includes `attachments` and `projectMemory` fields
-- **Next entry point**: Phase 8C (model selection per-session)
-- **Roadmap updated**: phases 8C–8G outlined, MCP deferred to later phases
-- **Spec aligned**: current status reflects all completed implementation work
+## Phase 9.8 — Execution Path Stabilization (Completed)
 
-### 2026-04-11 (Original)
+### Goals
 
-- added English LLM/tooling companion spec
-- aligned English spec with the current `claw-studio`-first direction
-- recorded persistence first version
-- recorded `permissionMode` end-to-end wiring
-- recorded explicit model-selection and preferred-model policy
-- recorded collapsed-rail + Project Memory overlay implementation progress
-- recorded workspace-shell polish direction: minimal context strip, fixed low-noise timeline, Project Memory still secondary
-- recorded Project Memory v2 direction: subtle capture actions, pending review, accept/dismiss promotion flow
-- recorded Project Memory hygiene direction: hidden empty sections, exact duplicate prevention, remove actions, clamp-first readability
-- recorded Project Memory v3 direction: assistant/final-output suggestions stay heuristic, subtle, and review-gated via Pending Review
+- OpenRouter free model support
+- Reduce CLI dependency
+- Establish execution stability
 
-## Runtime 9.5 Update (2026-04-11)
+---
 
-### Confirmed Decisions
+### Implemented
 
-- Runtime hardening is now active (Phase 9.5) with strict boundary preservation.
-- `local-api` remains the single run/state truth owner.
-- `claw-studio` remains a mirrored UI and must not introduce inferred run truth.
-- Run lifecycle contract now includes `stopping` and `abnormal_exit` for clearer state interpretation.
-- Stop flow is explicit: stop request -> `stopping` -> terminal state (`stopped` or failure-class terminal).
-- Abnormal process endings are surfaced with explicit cause text while keeping the existing API shape.
+- Dual execution path
+  - `tool-enabled` (CLI)
+  - `prompt-only` (Direct API)
+- `DirectApiEngineAdapter` introduced
+- CLI stdin hang resolved
+- Safe JSON parsing
+- API key overwrite prevention
+- Identification logging added (`[engine]` / `[direct-api]`)
 
-### Unresolved Items
+---
 
-- Stop-timeout value is currently fixed and may need tuning from real operator feedback.
-- Abnormal-exit categorization is string-based and may later need a compact machine-readable error code.
-- Progressive/streaming UX refinements in `claw-studio` Details remain a later runtime slice.
+### Result
 
-### Next Entry Point
+- DeepSeek V3.2 stable operation
+- Llama / Hermes usable (with constraints)
+- Thinking fixation resolved
 
-- Continue Phase 9.5 in `claw-ui/apps/local-api`:
-  - strengthen stop/cancel reliability across edge process states
-  - validate lifecycle ordering under polling concurrency
-  - expand regression checks for `stopping` / `abnormal_exit` paths
-- Keep `claw-studio` changes limited to mirrored rendering updates only when API lifecycle states expand.
+---
 
-## Runtime 9.5 Continuation (stop timeout / LLM settings split)
+## Phase 10 — Model & Usability Layer (Current)
 
-### Confirmed Decisions
+### Focus
 
-- stop timeout is a runtime tuning value
-- the default stop timeout remains `8000ms`
-- stop timeout may be overridden by `local-api` settings
-- stop timeout should not be exposed on the normal UI yet
-- `claw-studio` does not own timeout truth and only mirrors API truth
+- Model selection UI stabilization
+- API key settings UI
+- Model capability display
 
-### Unresolved Items
+---
 
-- exact settings key name for the stop-timeout override
-- whether timeout should ever appear in the settings UI later
-- whether the LLM settings profile should stay fixed as `Standard / Local / Advanced`
-- which providers should be supported first
+### In Progress
 
-### Next Entry Point
+- Establishing DeepSeek as default model
+- Organizing provider-specific behavior
+- Improving error display
 
-- add configurable stop timeout to `local-api` settings
-- then add the LLM settings shape (`executionMode / provider / modelId`)
+---
 
-Reason:
+### Next
 
-- stop timeout is a runtime tuning concern and should be separated first
-- after that, the LLM settings shape can remain focused on model-selection concerns
-
-## LLM Settings Shape Update (2026-04-11)
-
-### Confirmed Decisions
-
-- `shared/contracts` now includes optional `llmSettings` under `AppSettings`.
-- `llmSettings` requires `executionMode`, `provider`, and `modelId`.
-- `llmSettings` supports optional `fallbackProvider`, `fallbackModelId`, and `profile` for future expansion.
-- Runtime tuning and model selection remain separated: `stopTimeoutMs` stays a runtime tuning value.
-- `local-api` remains the settings truth owner; `claw-studio` remains mirrored UI only.
-- `POST /api/settings` now applies lightweight shape validation for `llmSettings` and rejects invalid values.
-
-### Unresolved Items
-
-- Whether provider/model allowlists should be introduced in the route layer.
-- Whether `profile` should later drive default provider/model selection behavior.
-- How much of `llmSettings` should be exposed in normal UX versus advanced surfaces.
-
-### Next Entry Point
-
-- Wire `llmSettings` into execution selection in `local-api` without breaking existing `activeProvider` / `activeModel` clients.
-- Keep route validation lightweight and avoid framework-heavy settings abstractions.
-- Keep runtime tuning values independent from LLM selection shape.
-
-## LLM Settings Resolution Update (2026-04-11)
-
-### Confirmed Decisions
-
-- `local-api` now resolves execution provider/model with this priority:
-  1. valid `settings.llmSettings` (`executionMode`, `provider`, `modelId`)
-  2. legacy `activeProvider` / `activeModel`
-- `llmSettings` remains optional to preserve compatibility with existing clients.
-- legacy `activeProvider` / `activeModel` remains supported and must not be removed yet.
-- `profile` is accepted as optional metadata but does not change execution behavior in this slice.
-- runtime tuning values (for example `stopTimeoutMs`) remain separate from LLM selection settings.
-
-### Unresolved Items
-
-- whether `profile` should later influence default provider/model mapping.
-- whether to add provider/model allowlists for stricter route-time validation.
-
-### Next Entry Point
-
-- wire optional fallback selection (`fallbackProvider` / `fallbackModelId`) into runtime selection in a small, safe slice.
-- keep legacy compatibility as the first guardrail.
-
-## Minimal LLM Selector Update
-
-### Confirmed Decisions
-
-- `claw-studio` now has a minimal three-option LLM selector in the composer area.
-- The options are `Standard`, `Local`, and `Advanced`.
-- `Standard` clears `llmSettings`, so `local-api` continues through the legacy `activeProvider` / `activeModel` fallback path.
-- `Local` sends a compact `llmSettings` payload with `executionMode=local` and fixed local placeholder values.
-- `Advanced` is currently a placeholder path and does not expose a detailed provider/model picker yet.
-- `claw-studio` remains mirrored UI only and does not resolve LLM truth locally.
-
-### Unresolved Items
-
-- whether `Advanced` should later open a detailed settings surface or reuse the existing settings page
-- whether the fixed local placeholder values should later become configurable
-- whether `Standard` should eventually map to a named profile instead of clearing `llmSettings`
-
-### Next Entry Point
-
-- keep the selector quiet and stable while runtime hardening continues
-- only expand the selector if a later phase needs a richer advanced settings surface
-
-## Advanced Selector First Version
-
-### Confirmed Decisions
-
-- `Advanced` now opens a small composer popover instead of exposing always-visible detailed controls.
-- The first version edits only:
-  - `executionMode`
-  - `provider`
-  - `modelId`
-- `Save` writes `llmSettings` through `local-api` settings.
-- `Cancel` closes the popover without applying draft changes.
-- `Reset to Standard` removes `llmSettings` and returns to legacy fallback (`activeProvider` / `activeModel`).
-- `claw-studio` remains input/display only; all execution-setting truth stays in `local-api`.
-
-### Unresolved Items
-
-- fallback fields (`fallbackProvider`, `fallbackModelId`) are intentionally not exposed in this first version
-- no provider-specific advanced options are exposed yet
-- no extra routing logic is added in the UI layer
-
-### Next Entry Point
-
-- keep this advanced popover minimal and quiet
-- if needed later, expand only inside advanced surfaces without changing `local-api` truth ownership
-
-## Local Execution Failure UX Notes
-
-### Confirmed Decisions
-
-- Local-mode runtime failures are translated into clearer user-facing messages for first-run usability.
-- Current friendly hints cover:
-  - Ollama unreachable
-  - local model missing/not pulled
-  - provider request timeout
-- `local-api` remains the truth owner; `claw-studio` only mirrors and displays returned terminal errors.
-
-### Unresolved Items
-
-- whether to expose one-click recovery guidance (for example "run `ollama pull ...`") in future UI
-- whether provider-specific hints should be localized and structured rather than plain text
-
-## Composer Quieting Update
-
-### Confirmed Decisions
-
-- The composer now uses a single primary Run/Stop button instead of separate always-visible submit and stop actions.
-- The main action switches by mirrored API state only:
-  - idle / not stoppable -> `Run`
-  - active / stoppable -> `Stop`
-- A lightweight `Thinking...` indicator is shown only while a run is active.
-- `Thinking...` disappears after stop, completion, failure, or abnormal exit.
-- Permission mode and AI mode are now accessed through compact composer popovers instead of always-visible segmented controls.
-- Role selection remains reachable, but the toolbar should stay quieter than earlier segmented-control versions.
-- The composer remains the main interaction surface, but it should not become visually heavy.
-
-### Current UI Behavior
-
-- normal view should not show explanatory `Running` / `Completed` chrome as a primary signal
-- primary runtime feedback in normal view is:
-  - the single Run/Stop action
-  - the temporary `Thinking...` indicator
-  - `Details` when deeper inspection is needed
-- timeline rendering keeps `running`, `completed`, and `stopping` status rows out of the normal flow
-- terminal error/abnormal/stopped states may still surface when needed for user clarity
-
-### Unresolved Items
-
-- whether the Role control should later move behind the same compact popover pattern
-- whether `Thinking...` should later distinguish queueing vs model-processing more explicitly
-- whether the main action label should later become icon-first without harming clarity
-
-### Next Entry Point
-
-- keep the composer quiet and obvious to operate
-- avoid reintroducing always-visible segmented toolbar controls
-- preserve API-truth-driven action switching only
-
-## Local Readiness Hint Update
-
-### Confirmed Decisions
-
-- A lightweight local-readiness hint may appear only when:
-  - `llmSettings.executionMode=local`
-  - the latest relevant run ended with a local abnormal-exit pattern
-- Current hint categories are:
-  - Ollama unreachable
-  - local model missing
-  - local provider timeout
-- The hint is advisory UI only; it does not change execution flow or local-api truth.
-
-### Unresolved Items
-
-- whether local-readiness hints should later include one-click recovery affordances
-- whether hint detection should move from string matching to structured API error codes in a later slice
-
-## Advanced Custom Provider (First Version)
-
-### Confirmed Decisions
-
-- Built-in cloud taxonomy remains fixed to:
-  - `google`
-  - `openrouter`
-  - `openai`
-  - `anthropic`
-- Advanced may additionally expose a separate explicit path: `provider=custom`.
-- `provider=custom` is not a replacement for the fixed taxonomy; it is an Advanced-only escape hatch for trying non-preset providers.
-- The first version of `custom` is limited to OpenAI-compatible endpoints only.
-- Provider routing must stay explicit:
-  - preset providers use the fixed taxonomy ids
-  - custom providers use `provider=custom` plus a nested `customProvider` object
-- Model family names must not be used to infer provider path.
-- `local-api` remains the truth owner for provider resolution, endpoint resolution, and secret-bearing settings.
-- `claw-studio` remains input/display only and must not resolve provider behavior locally.
-
-### Proposed Shape
-
-- `llmSettings` keeps its current top-level fields:
-  - `executionMode`
-  - `provider`
-  - `modelId`
-  - optional `fallbackProvider`
-  - optional `fallbackModelId`
-  - optional `profile`
-- When `provider=custom`, `llmSettings` may additionally include:
-  - `customProvider.providerId`
-  - `customProvider.displayName`
-  - `customProvider.baseUrl`
-  - `customProvider.apiKey`
-  - `customProvider.modelId`
-- `llmSettings.modelId` should remain present for compatibility, but for `provider=custom` it should mirror the chosen `customProvider.modelId` rather than replace the nested object.
-
-### Preset / Custom Boundary
-
-- Preset providers are for known product-level routing semantics and billing paths.
-- Custom provider is for explicit experimentation with OpenAI-compatible endpoints that do not fit the fixed preset taxonomy.
-- Preset provider ids must keep their stable meaning:
-  - `google` = Google direct contract / endpoint / billing path
-  - `openrouter` = OpenRouter contract / endpoint / billing path
-  - `openai` = OpenAI direct contract / endpoint / billing path
-  - `anthropic` = Anthropic direct contract / endpoint / billing path
-- `custom` must not silently alias any preset provider.
-- If a user wants Qwen through an OpenAI-compatible endpoint, that should be represented as `provider=custom`, not by overloading `openai` or `openrouter`.
-
-### Advanced UI Direction
-
-- Normal workspace UX must remain quiet.
-- Standard and Local stay simple entry points.
-- Advanced remains the explicit provider-selection surface.
-- Detailed custom-provider inputs must not be always visible in the composer toolbar.
-- In the first version, selecting `Custom` inside Advanced should reveal only the minimum required fields:
-  - provider id
-  - display name
-  - base URL
-  - API key
-  - model id
-- Save writes settings through `local-api`.
-- Cancel discards the draft.
-- Reset to Standard removes `llmSettings` and returns to legacy/default resolution.
-
-### API Key Storage (Interim Policy)
-
-- Custom-provider API keys must be treated as `local-api`-owned settings data, not as renderer-owned truth.
-- `claw-studio` may collect and send the value, but must not become the durable authority for it.
-- First version may store the custom API key in the existing local settings path if needed for compatibility and scope control.
-- This first version should explicitly be treated as an interim storage policy, not a final secret-management design.
-- A later slice may move custom secrets into a more isolated local secret store without changing the Advanced UX contract.
-
-### Unresolved Items
-
-- whether `provider=custom` should be validated only by shape or also by allow/deny rules on `baseUrl`
-- whether `customProvider.providerId` should be globally unique or only locally descriptive
-- whether preset provider API keys and custom-provider API keys should later move into a dedicated secret store
-- whether Advanced should show the active endpoint path in a quiet summary line after save
-
-### Next Entry Point
-
-- extend `shared/contracts` and `local-api` settings shape to support optional `customProvider`
-- keep preset taxonomy semantics unchanged while adding explicit `provider=custom`
-- implement `local-api` resolution so custom providers use only the nested explicit endpoint/key fields
-- add the minimum quiet Advanced UI needed to edit custom-provider fields without expanding normal workspace chrome
+- Prompt optimization
+- tool-enabled path re-stabilization
+- Per-provider tuning

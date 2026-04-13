@@ -11,7 +11,8 @@
 
 ## Purpose
 
-This spec fixes the responsibility boundaries, current state, and next entry points for `claw-code` / `claw-ui` / `claw-studio`.
+This spec fixes the responsibility boundaries, provider/settings policy, and next entry points
+for `claw-code` / `claw-ui` / `claw-studio`.
 
 ---
 
@@ -22,262 +23,209 @@ This spec fixes the responsibility boundaries, current state, and next entry poi
 1. UI Layer
    - `apps/claw-studio` = primary desktop workspace UI
    - `claw-ui/apps/web-ui` = verification web client
-
 2. API Layer
    - `claw-ui/apps/local-api` = state owner / run coordinator
-
 3. Engine Layer
-   - `claw-code` = execution engine
+   - `claw-code` = model routing / execution
 
 ---
 
 ## Fixed Boundaries
 
-- `local-api` is the **truth owner** for run lifecycle / status / logs / final output
+- `local-api` is the **truth owner** for run lifecycle, status, logs, final output, and settings
 - execution adapter holds execution concerns only
-- `claw-studio` is mirrored UI only
-- `claw-studio` does not own run truth
-- `shared/contracts` is the run-related shared boundary
+- `claw-studio` is mirrored UI only — it must not own run truth
+- `shared/contracts` is the shared boundary for run-related types
+
+### Non-Goals
+
+- Do not push provider resolution logic into `claw-studio`
+- Do not infer provider from model family name
+- Do not collapse UI and engine concerns
+- Do not expose advanced settings in normal workspace view
 
 ---
 
 ## UI Policy
 
-- Maintain chat-first / quiet UI
+- Maintain chat-first / quiet workspace
 - composer is the primary actor
-- timeline is the primary axis
-- Details panel for deeper information
+- timeline is the primary scrolling axis
+- Details panel holds deeper run output
+- overlays are secondary, quiet surfaces
 
 ---
 
-## Model / Settings Policy
+## Provider / Settings Policy
 
-- `local-api` is the truth owner for settings
-- `claw-studio` handles input and display only
-- Separate runtime tuning from model selection
+`local-api` is the **single source of truth** for all provider, model, and settings resolution.
 
----
+### Cloud Provider Taxonomy (Fixed)
 
-## Cloud Provider Taxonomy (Fixed)
+```
+google
+openrouter
+openai
+anthropic
+```
 
-- `google`
-- `openrouter`
-- `openai`
-- `anthropic`
-
-Rules:
-
-- provider represents routing / billing path
+- `provider` represents the routing / billing path
 - Do not infer provider from model name
-- `executionMode=local` is treated separately
+- `executionMode=local` is treated separately from cloud taxonomy
 
----
-
-## 🚨 Execution Architecture (NEW)
-
-### Background
-
-The previous architecture used a single path based on CLI + tool, which caused:
-
-- OpenRouter free models do not support tools
-- CLI stdin hang (Thinking fixation)
-- Failures due to excessive context
-
----
-
-### Decision
-
-**Split execution into two separate paths**
-
----
-
-### Execution Paths
-
-#### 1. tool-enabled (legacy)
-
-- Via CLI
-- Tool usage enabled
-- Targets:
-  - GPT
-  - Gemini
-  - Claude
-
----
-
-#### 2. prompt-only (new)
-
-- Direct API (fetch)
-- No tools
-- Minimal payload (model + messages only)
-
-Targets:
-
-- OpenRouter free models
-- Lightweight / low-cost models
-
----
-
-### Routing
+### Standard Mode (Default)
 
 ```ts
-enableTools === true  → tool-enabled
-enableTools === false → prompt-only (default)
+executionMode = "cloud"
+provider      = "google"
+modelId       = "gemini-2.5-flash"
 ```
 
----
+- Standard resolves to Google direct Gemini
+- This is the default for all new sessions
 
-### Key Rules
+### Advanced Mode
 
-- prompt-only does not go through the CLI
-- Does not send tool schema
-- Does not send thinking parameter
+- Explicit provider selection by user
+- Supports all four fixed taxonomy providers
+- Gemini direct (`provider=google`) and OpenRouter-via-Gemini (`provider=openrouter`) are separate paths
 
----
+### Custom Provider (Planned — Phase 9C)
 
-### Effects
-
-- CLI hang resolved
-- OpenRouter free model support
-- Simplified execution path established
-
----
-
-## Current Model Strategy
-
-### Primary
-
-```
-deepseek/deepseek-v3.2
+```ts
+provider       = "custom"
+customProvider = {
+  providerId:   string
+  displayName:  string
+  baseUrl:      string
+  apiKey:       string
+  modelId:      string
+}
 ```
 
-Reasons:
+- OpenAI-compatible endpoints only (first version)
+- Custom provider UI lives in the quiet Advanced surface only
+- Preset provider taxonomy is not modified
 
-- Stable operation confirmed
-- Strong coding performance
-- High cost efficiency
-
----
-
-### Secondary
-
-```
-meta-llama/llama-3.3-70b-instruct:free
-nousresearch/hermes-3-llama-3.1-405b:free
-```
-
-※ Unstable (429 / provider constraints)
-
----
-
-## API Key Policy (Provisional)
+### API Key Policy (Provisional)
 
 - Held by `local-api`
 - `claw-studio` handles input only
-- Overwrite on save is prevented (empty string retains existing value)
+- Save is a merge-save: empty string retains existing value
 - Future: planned migration to secret store
 
 ---
 
-## Current Status
+## Execution Architecture Summary
 
-### claw-studio
+Two execution paths exist. Routing is determined by `enableTools`:
 
-- UI complete (quiet workspace)
-- Model selection implemented
-- prompt-only support in place
+| Path           | Transport  | Tools | Target                          |
+|----------------|------------|-------|---------------------------------|
+| `tool-enabled` | CLI        | Yes   | GPT, Gemini, Claude             |
+| `prompt-only`  | Direct API | No    | OpenRouter free models, lightweight |
+
+```ts
+enableTools === true  → tool-enabled
+enableTools === false → prompt-only  (default)
+```
+
+Rules:
+- `prompt-only` does not go through the CLI
+- Does not send tool schema or `thinking` parameter
+- `DirectApiEngineAdapter` routes between the two paths
 
 ---
 
-### local-api
+## Current Phase
 
-- Execution split implemented
-- `DirectApiEngineAdapter` introduced
-- Safe JSON parsing implemented
-- API key overwrite prevention implemented
+- **Phase 9.5** — Runtime / Execution UX Hardening (active)
+- **Phase 9B** — Provider Taxonomy & Gemini Direct Routing (active, parallel)
+- **Phase 9C** — Advanced Custom Provider (planned)
+
+---
+
+## Phase 9.5 — Runtime / Execution UX Hardening
+
+Goals:
+- Strengthen stop / cancel / abnormal exit reliability
+- Maintain chat-first UX
+
+Fixed conditions:
+- `local-api` truth owner maintained
+- `claw-studio` remains mirrored UI
+- Runtime tuning values stay separate from model selection
+
+---
+
+## Phase 9B — Provider Taxonomy & Gemini Direct Routing
+
+Goals:
+- Resolve ambiguity between Gemini direct and OpenRouter-via-Gemini
+- Make provider / billing path / endpoint path explicit in `local-api`
+
+Policy:
+- Cloud provider taxonomy fixed: `google / openrouter / openai / anthropic`
+- `provider=google` = Google direct Gemini
+- `provider=openrouter` + Gemini-family model = OpenRouter-routed Gemini
+- Standard default resolves to Google direct Gemini
+
+Done when:
+- Taxonomy matches across spec / roadmap / `local-api` resolution
+- Standard resolves to Google direct Gemini
+- OpenRouter remains as explicit provider
+- Legacy fallback is maintained
+
+---
+
+## Phase 9C — Advanced Custom Provider (Planned)
+
+Goals:
+- Add an Advanced-only entry point for OpenAI-compatible custom providers
+- Keep fixed taxonomy intact
+
+Scope:
+- Introduce `provider=custom`
+- Add optional `customProvider` settings object
+- Fields: `providerId`, `displayName`, `baseUrl`, `apiKey`, `modelId`
+- Preset providers unchanged
+
+Rules:
+- Preset and custom are explicitly separated
+- Do not infer provider path from model name
+- Custom provider is limited to OpenAI-compatible endpoints (first version)
+- `local-api` is truth owner for endpoint and key resolution
+- `claw-studio` handles input and display only
 
 ---
 
 ## Confirmed Decisions
 
-- execution path is dual structure — not to be overridden
-- prompt-only is treated as a first-class execution path
-- OpenRouter free models use prompt-only exclusively
-- `local-api` truth owner maintained
-- `claw-studio` kept as UI-only
-- Cloud provider taxonomy fixed: `google / openrouter / openai / anthropic`
+- 3-layer architecture is fixed: UI / API / Engine
+- `local-api` is the single truth owner for settings and run state
+- `claw-studio` is UI-only — never a state owner
+- Cloud provider taxonomy is fixed: `google / openrouter / openai / anthropic`
 - Google direct and OpenRouter-via-Gemini are treated as separate paths
+- Standard defaults to `provider=google` + `modelId=gemini-2.5-flash`
+- Dual execution path (tool-enabled / prompt-only) is not to be overridden
+- `prompt-only` is a first-class execution path, not a fallback
 
 ---
 
 ## Next Entry Points
 
-1. Stabilize model selection UI
-2. Improve API key settings UI
-3. Model capability labeling
-4. Prompt optimization
+1. Fix `local-api` provider resolution to align with fixed taxonomy
+2. Lock Standard to Google direct Gemini (`provider=google`, `modelId=gemini-2.5-flash`)
+3. Maintain legacy `activeProvider` / `activeModel` fallback
+4. Continue Phase 9.5 runtime hardening
+5. After taxonomy is stable — plan Phase 9C custom provider entry
 
 ---
 
 ## Work Rules
 
 1. Read this file first
-2. Record all spec changes
+2. Record all spec changes here before implementing
 3. Do not break `local-api` responsibility boundaries
 4. Keep `claw-studio` as UI-only
-
----
-
-## Phase 9.8 — Execution Path Stabilization (Completed)
-
-### Goals
-
-- OpenRouter free model support
-- Reduce CLI dependency
-- Establish execution stability
-
----
-
-### Implemented
-
-- Dual execution path
-  - `tool-enabled` (CLI)
-  - `prompt-only` (Direct API)
-- `DirectApiEngineAdapter` introduced
-- CLI stdin hang resolved
-- Safe JSON parsing
-- API key overwrite prevention
-- Identification logging added (`[engine]` / `[direct-api]`)
-
----
-
-### Result
-
-- DeepSeek V3.2 stable operation
-- Llama / Hermes usable (with constraints)
-- Thinking fixation resolved
-
----
-
-## Phase 10 — Model & Usability Layer (Current)
-
-### Focus
-
-- Model selection UI stabilization
-- API key settings UI
-- Model capability display
-
----
-
-### In Progress
-
-- Establishing DeepSeek as default model
-- Organizing provider-specific behavior
-- Improving error display
-
----
-
-### Next
-
-- Prompt optimization
-- tool-enabled path re-stabilization
-- Per-provider tuning
+5. Do not infer provider from model name

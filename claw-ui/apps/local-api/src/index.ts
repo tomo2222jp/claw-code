@@ -1,6 +1,6 @@
 import Fastify from "fastify";
 
-import { ClawEngineAdapter } from "./adapters/claw-engine-adapter.js";
+import { DirectApiEngineAdapter } from "./adapters/direct-api-engine-adapter.js";
 import { registerHealthRoutes } from "./routes/health-routes.js";
 import { registerRunRoutes } from "./routes/run-routes.js";
 import { registerSettingsRoutes } from "./routes/settings-routes.js";
@@ -13,9 +13,10 @@ const host = process.env.HOST ?? "127.0.0.1";
 
 async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   const app = Fastify({ logger: true });
+  console.log("[engine] using DirectApiEngineAdapter");
   const context: AppContext = {
     settingsService: new SettingsService(resolveSettingsFilePath()),
-    runService: new RunService(new ClawEngineAdapter()),
+    runService: new RunService(new DirectApiEngineAdapter()),
   };
 
   await registerHealthRoutes(app);

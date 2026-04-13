@@ -70,6 +70,26 @@ export function SettingsPage({ settings, onSave, saveMessage, saveError }: Setti
           }
         />
       </label>
+      <label className="field">
+        <span>apiKey</span>
+        <input
+          type="password"
+          value={draft.apiKey}
+          onChange={(event) =>
+            setDraft((current) => ({ ...current, apiKey: event.target.value }))
+          }
+        />
+      </label>
+      <label className="field">
+        <span>enableTools</span>
+        <input
+          type="checkbox"
+          checked={draft.enableTools}
+          onChange={(event) =>
+            setDraft((current) => ({ ...current, enableTools: event.target.checked }))
+          }
+        />
+      </label>
       <div className="actions">
         <button onClick={() => void handleSave()} disabled={saving} type="button">
           {saving ? "Saving..." : "Save"}

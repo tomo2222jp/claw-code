@@ -14,6 +14,8 @@ const EMPTY_SETTINGS: AppSettings = {
   activeModel: "",
   retryCount: 0,
   openaiBaseUrl: "",
+  apiKey: "",
+  enableTools: false,
 };
 
 export function App() {

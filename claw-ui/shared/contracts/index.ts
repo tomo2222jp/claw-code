@@ -3,6 +3,8 @@ export type AppSettings = {
   activeModel: string;
   retryCount: number;
   openaiBaseUrl: string;
+  apiKey: string;
+  enableTools: boolean;
 };
 
 export type RunRequest = {

@@ -8,6 +8,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   activeModel: "openai/gpt-oss-120b:free",
   retryCount: 2,
   openaiBaseUrl: "https://openrouter.ai/api/v1",
+  apiKey: "",
+  enableTools: false,
 };
 
 export class SettingsService {
@@ -30,10 +32,18 @@ export class SettingsService {
     }
   }
 
-  async saveSettings(settings: AppSettings): Promise<AppSettings> {
+  async saveSettings(incoming: AppSettings): Promise<AppSettings> {
     await this.ensureStorageDir();
-    await writeFile(this.filePath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
-    return settings;
+    // Preserve apiKey: claw-studio doesn't know about this field, so it may
+    // send an empty string when the user only changes the model. Keep the
+    // stored key in that case.
+    const existing = await this.getSettings().catch(() => DEFAULT_SETTINGS);
+    const merged: AppSettings = {
+      ...incoming,
+      apiKey: incoming.apiKey || existing.apiKey,
+    };
+    await writeFile(this.filePath, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
+    return merged;
   }
 
   private async ensureStorageDir(): Promise<void> {

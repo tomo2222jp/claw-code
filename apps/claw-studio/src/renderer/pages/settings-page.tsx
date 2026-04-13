@@ -3,13 +3,15 @@ import { useEffect, useState } from "react";
 import type { AppSettings } from "../../../../../claw-ui/shared/contracts/index.js";
 import { useI18n } from "../i18n/index.js";
 
-// Curated list aligned with current OpenRouter-first project direction.
-// Provider is openrouter for all v1 options; extend this list in later phases.
+// Curated list of preset models for Standard mode.
+// Provider is openrouter for all options; extend this list in later phases.
 const MODEL_OPTIONS = [
-  { provider: "openrouter", model: "openai/gpt-oss-120b:free", label: "GPT OSS 120B (free)" },
-  { provider: "openrouter", model: "anthropic/claude-3.5-sonnet", label: "Claude 3.5 Sonnet" },
-  { provider: "openrouter", model: "openai/gpt-4o", label: "GPT-4o" },
-  { provider: "openrouter", model: "meta-llama/llama-3.1-70b-instruct:free", label: "Llama 3.1 70B (free)" },
+  { provider: "openrouter", model: "deepseek/deepseek-v3.2",                     label: "DeepSeek V3.2" },
+  { provider: "openrouter", model: "openai/gpt-oss-120b:free",                   label: "GPT OSS 120B (free)" },
+  { provider: "openrouter", model: "anthropic/claude-3.5-sonnet",                label: "Claude 3.5 Sonnet" },
+  { provider: "openrouter", model: "openai/gpt-4o",                              label: "GPT-4o" },
+  { provider: "openrouter", model: "meta-llama/llama-3.3-70b-instruct:free",     label: "Llama 3.3 70B (free)" },
+  { provider: "openrouter", model: "nousresearch/hermes-3-llama-3.1-405b:free",  label: "Hermes 3 405B (free)" },
 ] as const;
 
 function toOptionKey(provider: string, model: string): string {

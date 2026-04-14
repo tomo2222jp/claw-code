@@ -480,84 +480,97 @@ export function SettingsPage({ settings, onSave, saveMessage, saveError }: Setti
       )}
 
       {/* Legacy Compatibility Section */}
-      <div className="legacy-toggle" style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #d7e4f0' }}>
+      <div className="legacy-toggle">
         <button
           type="button"
           className="secondary-button"
           onClick={() => setShowLegacy(!showLegacy)}
         >
-          {showLegacy ? "Hide" : "Show"} Legacy / Compatibility Fields
+          {showLegacy ? "▲ Hide" : "▼ Show Compatibility / Debug Fields"}
         </button>
+        
+        {!showLegacy && (
+          <div className="legacy-collapsed-summary">
+            Legacy fields kept for backward compatibility (most users won't need these)
+          </div>
+        )}
       </div>
 
       {showLegacy && (
         <div className="legacy-settings">
-          <h3>Legacy Compatibility Fields</h3>
-          <p className="hint">
-            These fields are maintained for backward compatibility.
-            Most users should not need to modify them.
-          </p>
+          <h3>Compatibility / Debug Fields</h3>
           
-          <label className="field">
-            <span className="field-label">
-              <span>activeProvider</span>
-              <span className="hint">Bridged to `CLAW_ACTIVE_PROVIDER_OVERRIDE`</span>
-            </span>
-            <input
-              value={draft.activeProvider}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, activeProvider: event.target.value }))
-              }
-              placeholder="openai"
-            />
-          </label>
-          <label className="field">
-            <span className="field-label">
-              <span>activeModel</span>
-              <span className="hint">Passed to the CLI as `--model`</span>
-            </span>
-            <input
-              value={draft.activeModel}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, activeModel: event.target.value }))
-              }
-              placeholder="gpt-5.4"
-            />
-          </label>
-          <label className="field">
-            <span className="field-label">
-              <span>retryCount</span>
-              <span className="hint">Bridged to `CLAW_RETRY_COUNT_OVERRIDE`</span>
-            </span>
-            <input
-              type="number"
-              min={0}
-              value={draft.retryCount}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  retryCount: Number.parseInt(event.target.value || "0", 10),
-                }))
-              }
-            />
-          </label>
-          <label className="field">
-            <span className="field-label">
-              <span>openaiBaseUrl</span>
-              <span className="hint">Exported as `OPENAI_BASE_URL` for the child process</span>
-            </span>
-            <input
-              value={draft.openaiBaseUrl}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, openaiBaseUrl: event.target.value }))
-              }
-              placeholder="https://api.openai.com/v1"
-            />
-          </label>
+          <div className="legacy-note">
+            <strong>Note:</strong> These fields are maintained for backward compatibility and debug purposes only. 
+            The current recommended path uses the Standard, Advanced, or Custom settings above. 
+            Most users should not change these fields.
+          </div>
+          
+          <div className="legacy-fields">
+            <label className="field">
+              <span className="field-label">
+                <span>activeProvider</span>
+                <span className="hint">Bridged to `CLAW_ACTIVE_PROVIDER_OVERRIDE`</span>
+              </span>
+              <input
+                value={draft.activeProvider}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, activeProvider: event.target.value }))
+                }
+                placeholder="openai"
+              />
+            </label>
+            <label className="field">
+              <span className="field-label">
+                <span>activeModel</span>
+                <span className="hint">Passed to the CLI as `--model`</span>
+              </span>
+              <input
+                value={draft.activeModel}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, activeModel: event.target.value }))
+                }
+                placeholder="gpt-5.4"
+              />
+            </label>
+            <label className="field">
+              <span className="field-label">
+                <span>retryCount</span>
+                <span className="hint">Bridged to `CLAW_RETRY_COUNT_OVERRIDE`</span>
+              </span>
+              <input
+                type="number"
+                min={0}
+                value={draft.retryCount}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    retryCount: Number.parseInt(event.target.value || "0", 10),
+                  }))
+                }
+              />
+            </label>
+            <label className="field">
+              <span className="field-label">
+                <span>openaiBaseUrl</span>
+                <span className="hint">Exported as `OPENAI_BASE_URL` for the child process</span>
+              </span>
+              <input
+                value={draft.openaiBaseUrl}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, openaiBaseUrl: event.target.value }))
+                }
+                placeholder="https://api.openai.com/v1"
+              />
+            </label>
+          </div>
         </div>
       )}
 
       <div className="actions">
+        <div className="actions-hint">
+          <em className="hint">Save applies to all settings above, including compatibility fields if modified</em>
+        </div>
         <button onClick={() => void handleSave()} disabled={saving || !isDirty} type="button">
           {saving ? "Saving..." : "Save"}
         </button>

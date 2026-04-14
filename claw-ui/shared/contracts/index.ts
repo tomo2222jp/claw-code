@@ -1,12 +1,86 @@
+export type LlmToolMode = "enabled" | "disabled";
+export type ExecutionMode = "cloud" | "local";
+export type CloudProvider = "google" | "openrouter" | "openai" | "anthropic" | "custom";
+
+// Custom provider configuration for Phase 9C
+export type CustomProvider = {
+  providerId: string;
+  displayName?: string;
+  baseUrl: string;
+  apiKey?: string;
+  modelId: string;
+};
+
+export type LlmSettings = {
+  executionMode?: ExecutionMode;
+  provider?: CloudProvider | string;
+  modelId?: string;
+  toolMode?: LlmToolMode;
+  baseUrl?: string;
+  apiKeys?: {
+    google?: string;
+    openrouter?: string;
+    openai?: string;
+    anthropic?: string;
+  };
+  providerOptions?: Record<string, unknown>;
+  customProvider?: CustomProvider;
+};
+
 export type AppSettings = {
   activeProvider: string;
   activeModel: string;
   retryCount: number;
   openaiBaseUrl: string;
+  llmSettings?: LlmSettings;
+};
+
+export type ResolvedSettings = {
+  executionMode: ExecutionMode;
+  provider: CloudProvider;
+  modelId: string;
+  baseUrl?: string;
+  apiKey?: string;
+  toolMode: LlmToolMode;
+  resolvedProviderType: CloudProvider;
+};
+
+export type PermissionMode = "default" | "full_access";
+
+export type AgentRole = "default" | "planner" | "builder" | "reviewer";
+
+export type ImageAttachment = {
+  id: string;
+  data: string;
+  mimeType: string;
+};
+
+export type InjectedProjectMemory = {
+  rules?: string[];
+  decisions?: string[];
+  currentFocus?: string[];
+  pinnedItems?: string[];
+};
+
+export type WebResult = {
+  title: string;
+  snippet: string;
+  url: string;
+};
+
+export type GitReadResult = {
+  path: string;
+  excerpt: string;
 };
 
 export type RunRequest = {
   prompt: string;
+  permissionMode?: PermissionMode;
+  attachments?: ImageAttachment[];
+  projectMemory?: InjectedProjectMemory;
+  role?: AgentRole;
+  webResults?: WebResult[];
+  gitResults?: GitReadResult[];
 };
 
 export type RunStatus =

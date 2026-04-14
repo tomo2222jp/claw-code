@@ -1,4 +1,4 @@
-import type { AppSettings, CloudProvider, CustomProvider, ExecutionMode, LlmSettings, LlmToolMode, ResolvedSettings } from "../../../../shared/contracts/index.js";
+import type { AppSettings, CloudProvider, ConnectionTestResult, CustomProvider, ExecutionMode, LlmSettings, LlmToolMode, ResolvedSettings } from "../../../../shared/contracts/index.js";
 
 const DEFAULT_MODEL_ID = "gemini-2.5-flash";
 const DEFAULT_PROVIDER: CloudProvider = "google";
@@ -256,8 +256,8 @@ export class ProviderResolutionService {
       case "anthropic":
         return apiKeys.anthropic;
       case "custom":
-        // For custom provider, apiKey should come from customProvider
-        return undefined;
+        // For custom provider, check apiKeys.custom as fallback
+        return apiKeys.custom;
       default:
         return undefined;
     }
@@ -370,5 +370,181 @@ export class ProviderResolutionService {
       toolMode: "enabled",
       resolvedProviderType: DEFAULT_PROVIDER,
     };
+  }
+
+  /**
+   * Phase 9C: Test connection for provider settings
+   * Lightweight connectivity check for OpenAI-compatible endpoints
+   */
+  async testConnection(llmSettings?: LlmSettings): Promise<ConnectionTestResult> {
+    try {
+      // Validate settings first
+      const validation = this.validateLlmSettings(llmSettings);
+      if (!validation.isValid) {
+        return {
+          ok: false,
+          provider: llmSettings?.provider || 'unknown',
+          message: `Invalid settings: ${validation.errors.join('; ')}`
+        };
+      }
+
+      // Resolve settings
+      const resolved = this.resolveSettings(llmSettings);
+      const { provider, modelId, baseUrl } = resolved;
+
+      // For custom provider, require baseUrl
+      if (provider === 'custom' && !baseUrl) {
+        return {
+          ok: false,
+          provider: 'custom',
+          message: 'Custom provider requires a valid base URL'
+        };
+      }
+
+      // Skip test for providers without baseUrl (e.g., Anthropic without custom baseUrl)
+      if (!baseUrl) {
+        return {
+          ok: true,
+          provider,
+          modelId,
+          message: `Provider ${provider} configured (no endpoint test performed)`
+        };
+      }
+
+      // Test OpenAI-compatible endpoint with a lightweight request
+      const testResult = await this.testOpenAiCompatibleEndpoint(baseUrl, resolved.apiKey);
+      
+      if (testResult.ok) {
+        return {
+          ok: true,
+          provider,
+          modelId,
+          baseUrl,
+          message: `Connection succeeded to ${provider} endpoint`
+        };
+      } else {
+        return {
+          ok: false,
+          provider,
+          modelId,
+          baseUrl,
+          message: testResult.message
+        };
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        provider: llmSettings?.provider || 'unknown',
+        message: `Test failed: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
+
+  /**
+   * Test connectivity to an OpenAI-compatible endpoint
+   */
+  private async testOpenAiCompatibleEndpoint(baseUrl: string, apiKey?: string): Promise<{ ok: boolean; message: string }> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      
+      if (apiKey) {
+        headers['Authorization'] = `Bearer ${apiKey}`;
+      }
+      
+      // Try lightweight models endpoint first (GET request, no body)
+      try {
+        const modelsUrl = baseUrl.endsWith('/') ? `${baseUrl}models` : `${baseUrl}/models`;
+        const response = await fetch(modelsUrl, {
+          method: 'GET',
+          headers,
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          return { ok: true, message: 'Endpoint reachable and authentication valid' };
+        } else if (response.status === 401) {
+          return { ok: false, message: 'Authentication failed (invalid or missing API key)' };
+        } else if (response.status === 404) {
+          // Some endpoints don't have /models endpoint, try chat completions
+          return await this.tryChatCompletionsEndpoint(baseUrl, apiKey, controller);
+        } else {
+          return { ok: false, message: `Endpoint returned HTTP ${response.status}` };
+        }
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        
+        if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+          return { ok: false, message: 'Request timed out (10 seconds)' };
+        }
+        
+        // If GET fails, try POST to chat/completions
+        return await this.tryChatCompletionsEndpoint(baseUrl, apiKey, controller);
+      }
+    } catch (error) {
+      return { 
+        ok: false, 
+        message: `Connection failed: ${error instanceof Error ? error.message : String(error)}` 
+      };
+    }
+  }
+
+  /**
+   * Try chat completions endpoint as fallback
+   */
+  private async tryChatCompletionsEndpoint(baseUrl: string, apiKey: string | undefined, controller: AbortController): Promise<{ ok: boolean; message: string }> {
+    try {
+      const chatUrl = baseUrl.endsWith('/') ? `${baseUrl}chat/completions` : `${baseUrl}/chat/completions`;
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      
+      if (apiKey) {
+        headers['Authorization'] = `Bearer ${apiKey}`;
+      }
+      
+      // Minimal valid OpenAI-compatible request
+      const requestBody = {
+        model: 'test-model', // Placeholder model name
+        messages: [{ role: 'user', content: 'test' }],
+        max_tokens: 1
+      };
+      
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
+      const response = await fetch(chatUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(requestBody),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (response.ok) {
+        return { ok: true, message: 'Chat endpoint reachable and responding' };
+      } else if (response.status === 401) {
+        return { ok: false, message: 'Authentication failed (invalid or missing API key)' };
+      } else if (response.status === 404) {
+        return { ok: false, message: 'Chat completions endpoint not found' };
+      } else {
+        return { ok: false, message: `Chat endpoint returned HTTP ${response.status}` };
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        return { ok: false, message: 'Request timed out (10 seconds)' };
+      }
+      return { 
+        ok: false, 
+        message: `Chat endpoint test failed: ${error instanceof Error ? error.message : String(error)}` 
+      };
+    }
   }
 }

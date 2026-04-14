@@ -106,3 +106,24 @@ export type LogEntry = {
   stream: "stdout" | "stderr" | "system";
   message: string;
 };
+
+// Provider Capability Metadata
+export type ProviderCapability = {
+  provider: "google" | "openrouter" | "openai" | "anthropic" | "custom";
+  label: string;
+  supportsTools: boolean | "depends";
+  supportsStreaming: boolean | "depends";
+  supportsVision: boolean | "depends";
+  supportsCustomEndpoint: boolean;
+  stability: "recommended" | "supported" | "experimental";
+  notes?: string;
+};
+
+// Test Connection Result
+export type ConnectionTestResult = {
+  ok: boolean;
+  provider: string;
+  modelId?: string;
+  baseUrl?: string;
+  message: string;
+};

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 
 import type { AppContext } from "../types/app-context.js";
-import type { AppSettings } from "../../../../shared/contracts/index.js";
+import type { AppSettings, ConnectionTestResult, LlmSettings } from "../../../../shared/contracts/index.js";
 import { ProviderResolutionService } from "../services/provider-resolution-service.js";
 import { sendApiError } from "./route-errors.js";
 
@@ -92,6 +92,23 @@ export async function registerSettingsRoutes(
         500,
         "settings_resolution_failed",
         error instanceof Error ? error.message : "failed to resolve settings",
+      );
+    }
+  });
+
+  app.post<{ Body: { llmSettings?: LlmSettings } }>("/api/settings/test-connection", async (request, reply) => {
+    try {
+      const providerResolutionService = new ProviderResolutionService();
+      const result = await providerResolutionService.testConnection(request.body.llmSettings);
+      
+      reply.code(result.ok ? 200 : 400);
+      return result;
+    } catch (error) {
+      return sendApiError(
+        reply,
+        500,
+        "connection_test_failed",
+        error instanceof Error ? error.message : "failed to test connection",
       );
     }
   });

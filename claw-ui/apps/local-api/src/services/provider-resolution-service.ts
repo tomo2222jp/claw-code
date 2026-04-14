@@ -13,7 +13,7 @@ const KNOWN_CLOUD_PROVIDERS: CloudProvider[] = ["google", "openrouter", "openai"
 
 /**
  * Provider resolution service that centralizes all provider/settings resolution logic
- * following Phase 9B requirements.
+ * following Phase 9B requirements and Phase 9C custom provider support.
  */
 export class ProviderResolutionService {
   /**
@@ -27,34 +27,34 @@ export class ProviderResolutionService {
     // Phase 9C: Validate and normalize provider with custom provider support
     const provider = this.validateProvider(llmSettings.provider, llmSettings.customProvider);
     
-    // Phase 9C: Normalize provider settings - preset / custom の混同を防ぐ
+    // Phase 9C: Normalize provider settings - prevent preset/custom confusion
     const normalized = this.normalizeProviderSettings(provider, llmSettings.customProvider);
-    const normalizedProvider = normalized.provider;
-    const normalizedCustomProvider = normalized.customProvider;
+    const resolvedProvider = normalized.provider;
+    const effectiveCustomProvider = normalized.customProvider; // Only valid for custom provider
     
     // Phase 9C: Determine modelId with custom provider support
-    const modelId = this.validateModelId(llmSettings.modelId, normalizedCustomProvider);
+    const modelId = this.validateModelId(llmSettings.modelId, effectiveCustomProvider);
     
     // Determine execution mode
     const executionMode = this.determineExecutionMode(llmSettings.executionMode);
     
     // Determine tool mode
-    const toolMode = this.determineToolMode(normalizedProvider, llmSettings.toolMode);
+    const toolMode = this.determineToolMode(resolvedProvider, llmSettings.toolMode);
     
     // Phase 9C: Determine base URL with custom provider support
-    const baseUrl = this.determineBaseUrl(normalizedProvider, llmSettings.baseUrl, normalizedCustomProvider);
+    const baseUrl = this.determineBaseUrl(resolvedProvider, llmSettings.baseUrl, effectiveCustomProvider);
     
     // Phase 9C: Get API key with custom provider support
-    const apiKey = this.getApiKeyForProvider(normalizedProvider, llmSettings.apiKeys, normalizedCustomProvider);
+    const apiKey = this.getApiKeyForProvider(resolvedProvider, llmSettings.apiKeys, effectiveCustomProvider);
 
     return {
       executionMode,
-      provider: normalizedProvider,
+      provider: resolvedProvider,
       modelId,
       baseUrl,
       apiKey,
       toolMode,
-      resolvedProviderType: normalizedProvider,
+      resolvedProviderType: resolvedProvider,
     };
   }
 
@@ -73,7 +73,7 @@ export class ProviderResolutionService {
       const mergedLlmSettings = { ...merged.llmSettings };
       
       // Shallow merge llmSettings fields (excluding apiKeys for now)
-      Object.keys(updates.llmSettings!).forEach(key => {
+      Object.keys(updates.llmSettings).forEach(key => {
         if (key !== 'apiKeys') {
           const value = (updates.llmSettings as any)[key];
           if (value !== undefined) {
@@ -117,7 +117,7 @@ export class ProviderResolutionService {
 
   /**
    * Validate and normalize provider with custom provider support
-   * Phase 9C: provider=custom のときだけ customProvider を使う
+   * Phase 9C: provider=custom only when customProvider is present
    */
   private validateProvider(provider?: string, customProvider?: CustomProvider): CloudProvider {
     if (!provider || typeof provider !== 'string') {
@@ -133,8 +133,8 @@ export class ProviderResolutionService {
     
     // Phase 9C: custom provider validation
     if (normalized === 'custom') {
-      // custom プロバイダーは customProvider の有無に関わらず 'custom' として返す
-      // 実際の検証は別のメソッドで行う
+      // Custom provider is returned as 'custom' regardless of customProvider presence
+      // Actual validation is done in separate methods
       return 'custom' as CloudProvider;
     }
     
@@ -143,29 +143,29 @@ export class ProviderResolutionService {
   }
 
   /**
-   * Phase 9C: Normalize provider settings - preset / custom の混同を防ぐ
-   * - provider=custom のときだけ customProvider を使う
-   * - preset provider と custom provider を混同しない
+   * Phase 9C: Normalize provider settings - prevent preset/custom confusion
+   * - Only use customProvider when provider=custom
+   * - Do not mix preset provider with custom provider
    */
   private normalizeProviderSettings(provider: CloudProvider, customProvider?: CustomProvider): { provider: CloudProvider; customProvider?: CustomProvider } {
-    // Phase 9C 絶対ルール: provider=custom のときだけ customProvider を使う
+    // Phase 9C absolute rule: Only use customProvider when provider=custom
     if (provider === 'custom') {
-      // custom プロバイダーが設定されている場合はそのまま返す
+      // Return custom provider if configured
       return { provider, customProvider };
     } else {
-      // preset provider の場合は customProvider を無視する
+      // For preset providers, ignore customProvider
       return { provider, customProvider: undefined };
     }
   }
 
   /**
    * Validate model ID with custom provider support
-   * Phase 9C: custom provider がある場合はその modelId を優先
+   * Phase 9C: Use effectiveCustomProvider modelId when available (only valid for custom provider)
    */
-  private validateModelId(modelId?: string, customProvider?: CustomProvider): string {
-    // Phase 9C: custom provider がある場合はその modelId を優先
-    if (customProvider && customProvider.modelId && customProvider.modelId.trim() !== '') {
-      return customProvider.modelId.trim();
+  private validateModelId(modelId?: string, effectiveCustomProvider?: CustomProvider): string {
+    // Phase 9C: Use effectiveCustomProvider modelId when available (only valid for custom provider)
+    if (effectiveCustomProvider && effectiveCustomProvider.modelId && effectiveCustomProvider.modelId.trim() !== '') {
+      return effectiveCustomProvider.modelId.trim();
     }
     
     if (!modelId || typeof modelId !== 'string' || modelId.trim() === '') {
@@ -200,12 +200,12 @@ export class ProviderResolutionService {
 
   /**
    * Determine base URL based on provider with custom provider support
-   * Phase 9C: custom provider がある場合はその baseUrl を優先
+   * Phase 9C: Use effectiveCustomProvider baseUrl when available (only valid for custom provider)
    */
-  private determineBaseUrl(provider: CloudProvider, customBaseUrl?: string, customProvider?: CustomProvider): string | undefined {
-    // Phase 9C: custom provider がある場合はその baseUrl を優先
-    if (customProvider && customProvider.baseUrl && customProvider.baseUrl.trim() !== '') {
-      return customProvider.baseUrl.trim();
+  private determineBaseUrl(provider: CloudProvider, customBaseUrl?: string, effectiveCustomProvider?: CustomProvider): string | undefined {
+    // Phase 9C: Use effectiveCustomProvider baseUrl when available (only valid for custom provider)
+    if (effectiveCustomProvider && effectiveCustomProvider.baseUrl && effectiveCustomProvider.baseUrl.trim() !== '') {
+      return effectiveCustomProvider.baseUrl.trim();
     }
     
     // Use custom base URL if provided
@@ -221,6 +221,12 @@ export class ProviderResolutionService {
         return OPENROUTER_BASE_URL;
       case "openai":
         return OPENAI_BASE_URL;
+      case "anthropic":
+        // Anthropic doesn't have a default base URL in the spec
+        return undefined;
+      case "custom":
+        // Custom provider requires baseUrl in customProvider config
+        return undefined;
       default:
         return undefined;
     }
@@ -228,12 +234,12 @@ export class ProviderResolutionService {
 
   /**
    * Get API key for the specified provider with custom provider support
-   * Phase 9C: custom provider がある場合はその apiKey を優先
+   * Phase 9C: Use effectiveCustomProvider apiKey when available (only valid for custom provider)
    */
-  private getApiKeyForProvider(provider: CloudProvider, apiKeys?: LlmSettings['apiKeys'], customProvider?: CustomProvider): string | undefined {
-    // Phase 9C: custom provider がある場合はその apiKey を優先
-    if (customProvider && customProvider.apiKey && customProvider.apiKey.trim() !== '') {
-      return customProvider.apiKey.trim();
+  private getApiKeyForProvider(provider: CloudProvider, apiKeys?: LlmSettings['apiKeys'], effectiveCustomProvider?: CustomProvider): string | undefined {
+    // Phase 9C: Use effectiveCustomProvider apiKey when available (only valid for custom provider)
+    if (effectiveCustomProvider && effectiveCustomProvider.apiKey && effectiveCustomProvider.apiKey.trim() !== '') {
+      return effectiveCustomProvider.apiKey.trim();
     }
     
     if (!apiKeys) {
@@ -249,6 +255,9 @@ export class ProviderResolutionService {
         return apiKeys.openai;
       case "anthropic":
         return apiKeys.anthropic;
+      case "custom":
+        // For custom provider, apiKey should come from customProvider
+        return undefined;
       default:
         return undefined;
     }
@@ -256,14 +265,14 @@ export class ProviderResolutionService {
 
   /**
    * Phase 9C: Validate custom provider configuration
-   * - providerId, baseUrl, modelId は必須
-   * - displayName, apiKey は optional
+   * - providerId, baseUrl, modelId are required
+   * - displayName, apiKey are optional
    */
   private validateCustomProvider(customProvider?: CustomProvider): { isValid: boolean; errors: string[] } {
     const errors: string[] = [];
     
     if (!customProvider) {
-      return { isValid: true, errors: [] }; // customProvider がなければバリデーション不要
+      return { isValid: true, errors: [] }; // No customProvider means no validation needed
     }
     
     if (!customProvider.providerId || customProvider.providerId.trim() === '') {
@@ -335,6 +344,11 @@ export class ProviderResolutionService {
       } catch {
         errors.push('baseUrl must be a valid URL');
       }
+    }
+    
+    // Validate apiKeys structure if present
+    if (llmSettings.apiKeys && typeof llmSettings.apiKeys !== 'object') {
+      errors.push('apiKeys must be an object');
     }
     
     return {

@@ -21,9 +21,40 @@ export async function registerSettingsRoutes(
     }
   });
 
-  app.post<{ Body: AppSettings }>("/api/settings", async (request, reply) => {
+  app.post<{ Body: Partial<AppSettings> }>("/api/settings", async (request, reply) => {
     try {
-      const saved = await context.settingsService.saveSettings(request.body);
+      // Get current settings
+      const currentSettings = await context.settingsService.getSettings();
+      
+      // Merge new settings with current
+      const mergedSettings = { ...currentSettings };
+      
+      // Handle llmSettings merge
+      if (request.body.llmSettings) {
+        if (!mergedSettings.llmSettings) {
+          mergedSettings.llmSettings = {};
+        }
+        
+        // Merge llmSettings fields
+        Object.keys(request.body.llmSettings).forEach(key => {
+          const value = (request.body.llmSettings as any)[key];
+          if (value !== undefined) {
+            (mergedSettings.llmSettings as any)[key] = value;
+          }
+        });
+      }
+      
+      // Merge other fields
+      Object.keys(request.body).forEach(key => {
+        if (key !== 'llmSettings') {
+          const value = (request.body as any)[key];
+          if (value !== undefined) {
+            (mergedSettings as any)[key] = value;
+          }
+        }
+      });
+      
+      const saved = await context.settingsService.saveSettings(mergedSettings);
       reply.code(200);
       return saved;
     } catch (error) {
@@ -32,6 +63,21 @@ export async function registerSettingsRoutes(
         500,
         "settings_save_failed",
         error instanceof Error ? error.message : "failed to save settings",
+      );
+    }
+  });
+
+  app.get("/api/settings/resolved", async (_request, reply) => {
+    try {
+      const settings = await context.settingsService.getSettings();
+      const resolved = context.settingsService.getResolvedSettings(settings);
+      return resolved;
+    } catch (error) {
+      return sendApiError(
+        reply,
+        500,
+        "settings_resolution_failed",
+        error instanceof Error ? error.message : "failed to resolve settings",
       );
     }
   });

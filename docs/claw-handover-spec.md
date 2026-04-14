@@ -58,6 +58,66 @@
 
 ---
 
+## OpenCode-inspired Settings Alignment
+
+### 目的
+OpenCode の provider / model / options デザインパターンを採用しつつ、claw の truth ownership アーキテクチャを維持する。
+
+### 基本方針
+- アーキテクチャは不変: `local-api` が execution resolution の truth owner
+- UI は OpenCode 的な設定入力面を持ってもよいが、normalize は `local-api` が担当
+- provider taxonomy は固定: `google`, `openrouter`, `openai`, `anthropic`
+- `provider=custom` は Advanced 専用
+- settings shape は OpenCode-inspired な整理に従う
+
+### そのまま採用する概念
+- provider 単位の `options` フィールド
+- `baseUrl` を正規フィールドとして扱う
+- `model` と `smallModel` の区別（将来対応用）
+- config merge / precedence 階層
+- 暗黙推定ではなく明示的 provider selection
+
+### claw 用に変形して採用する概念
+- `provider_id` / `model_id` 的な整理
+- custom provider shape（`customProvider` フィールド）
+- secret / API key の扱い（暫定方針）
+- provider ごとの model capability 表示
+- project / session / default の優先順位設計
+
+### 採用しない概念
+- UI truth ownership
+- UI 主導の provider resolution
+- run lifecycle ownership の移譲
+- settings だけで execution path が曖昧になる設計
+
+### Settings Shape（将来）
+```ts
+{
+  provider: "google" | "openrouter" | "openai" | "anthropic" | "custom",
+  modelId: string,
+  smallModelId?: string,
+  baseUrl?: string,
+  providerOptions?: Record<string, unknown>,
+  customProvider?: {
+    label: string,
+    baseUrl: string,
+    apiKey?: string,
+    // ... provider 別フィールド
+  }
+}
+```
+
+### 解決順序
+1. `local-api` がすべての設定入力を normalize する
+2. UI は OpenCode 的な設定入力面を提供する（入力のみ）
+3. 最終的な execution resolution は `local-api` が保持
+4. Standard 既定値は維持:
+   - `executionMode=cloud`
+   - `provider=google`
+   - `modelId=gemini-2.5-flash`
+
+---
+
 ## Cloud Provider Taxonomy（固定）
 
 - `google`

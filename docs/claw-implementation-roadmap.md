@@ -105,7 +105,11 @@
 - settings merge 保存（studio 側が apiKey を消さないように）
 - provider selection UI 修正
 - env fallback 整理（`OPENROUTER_API_KEY` / `OPENAI_API_KEY`）
-- OpenCode provider config 検討
+- OpenCode-inspired settings alignment
+  - OpenCode の provider / model / options デザインパターンを採用
+  - providerOptions, customProvider, baseUrl の settings shape を定義
+  - 現在の settings から OpenCode-inspired shape への移行経路を計画
+  - 移行全体で `local-api` truth ownership を維持
 
 ### 完了条件
 
@@ -158,8 +162,10 @@
 1. **Phase 9.9**: API key 入力 UI を Settings に追加する
 2. **Phase 9.9**: settings 保存時の apiKey overwrite を完全防止する
 3. **Phase 9.9**: provider selection UI を安定化する
-4. **Phase 10**: model capability labeling を追加する
-5. **Phase 10**: エラー表示を provider 別に改善する
+4. **Phase 9.9**: OpenCode-inspired settings shape を定義する（providerOptions, customProvider, baseUrl）
+5. **Phase 10**: model capability labeling を追加する
+6. **Phase 10**: エラー表示を provider 別に改善する
+7. **Phase 10**: OpenCode-inspired settings normalization を `local-api` に実装する
 
 ---
 

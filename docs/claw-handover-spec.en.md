@@ -52,9 +52,66 @@ This spec fixes the responsibility boundaries, current state, and next entry poi
 
 ## Model / Settings Policy
 
+### Core Architecture
 - `local-api` is the truth owner for settings
 - `claw-studio` handles input and display only
 - Separate runtime tuning from model selection
+
+### OpenCode-inspired Alignment
+Adopting OpenCode's provider/model/options design patterns while preserving claw's truth ownership architecture.
+
+**Core Principles:**
+- Architecture unchanged: `local-api` truth owner for execution resolution
+- UI may adopt OpenCode-like surfaces, normalization in `local-api`
+- Provider taxonomy fixed: `google`, `openrouter`, `openai`, `anthropic`
+- `provider=custom` is Advanced-only
+- Settings shape follows OpenCode-inspired organization
+
+**Concepts Adopted Directly:**
+- Provider-scoped `options` field
+- `baseUrl` as first-class settings field
+- `model` and `smallModel` distinction (future-ready)
+- Config merge / precedence hierarchy
+- Explicit provider selection over inference
+
+**Concepts Adopted with Claw Adjustments:**
+- `provider_id` / `model_id` style organization
+- Custom provider shape (`customProvider` field)
+- Secret / API key handling with interim policy
+- Provider-specific model capability display
+- Project / session / default precedence design
+
+**Concepts Not Adopted:**
+- UI truth ownership
+- UI-driven provider resolution
+- Run lifecycle ownership transfer
+- Execution path ambiguity from settings-only design
+
+**Settings Shape (Future):**
+```ts
+{
+  provider: "google" | "openrouter" | "openai" | "anthropic" | "custom",
+  modelId: string,
+  smallModelId?: string,
+  baseUrl?: string,
+  providerOptions?: Record<string, unknown>,
+  customProvider?: {
+    label: string,
+    baseUrl: string,
+    apiKey?: string,
+    // ... provider-specific fields
+  }
+}
+```
+
+**Resolution Order:**
+1. `local-api` normalizes all settings inputs
+2. UI provides OpenCode-like settings surfaces as input-only
+3. Final execution resolution remains in `local-api`
+4. Standard defaults maintained:
+   - `executionMode=cloud`
+   - `provider=google`
+   - `modelId=gemini-2.5-flash`
 
 ---
 

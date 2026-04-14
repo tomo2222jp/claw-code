@@ -84,28 +84,14 @@ This roadmap clarifies the implementation phases, current state, and next entry 
 
 ---
 
-## Current Phase
+## Phase 9B — Provider Taxonomy & Gemini Direct Routing (Enhancement)
 
-- **Phase 9.9** — Provider & Settings Stabilization (in progress)
-- **Phase 10** — Model & Usability Layer (parallel)
-
----
-
-## Phase 9.9 — Provider & Settings Stabilization (Current)
-
-### Goals
-
-- Complete the settings UI
-- Stabilize provider switching
-- Unify API key management
-
-### Tasks
+### Enhancements
 
 - API key input UI (Settings screen)
 - Settings merge-save (prevent studio from wiping apiKey)
-- Provider selection UI fix
+- Provider selection UI stabilization
 - Env fallback cleanup (`OPENROUTER_API_KEY` / `OPENAI_API_KEY`)
-- OpenCode provider config consideration
 
 ### Done When
 
@@ -114,13 +100,30 @@ This roadmap clarifies the implementation phases, current state, and next entry 
 
 ---
 
-## Phase 10 — Model & Usability Layer (Current / Parallel)
+## Phase 9C — Advanced Custom Provider (Design Enhancement)
+
+### Design Tasks
+
+- OpenCode-inspired settings alignment
+  - Define settings shape for providerOptions, customProvider, baseUrl
+  - Plan migration path from current settings to OpenCode-inspired shape
+  - Maintain `local-api` truth ownership throughout
+
+### Implementation Notes
+
+- Settings shape follows OpenCode provider/model/options patterns
+- UI provides OpenCode-like surfaces, normalization remains in `local-api`
+- `provider=custom` remains Advanced-only feature
+
+---
+
+## Phase 10 — Model & Usability Layer (Current)
 
 ### Focus
 
 - Model selection UI stabilization
-- API key settings UI
 - Model capability display
+- OpenCode-inspired settings normalization in `local-api`
 
 ### In Progress
 
@@ -155,11 +158,13 @@ This roadmap clarifies the implementation phases, current state, and next entry 
 
 ## Next Entry Point
 
-1. **Phase 9.9**: Add API key input UI to Settings
-2. **Phase 9.9**: Fully prevent apiKey overwrite on settings save
-3. **Phase 9.9**: Stabilize provider selection UI
-4. **Phase 10**: Add model capability labeling
-5. **Phase 10**: Improve per-provider error display
+1. **Phase 9B**: Add API key input UI to Settings
+2. **Phase 9B**: Fully prevent apiKey overwrite on settings save
+3. **Phase 9B**: Stabilize provider selection UI
+4. **Phase 9C**: Define OpenCode-inspired settings shape (providerOptions, customProvider, baseUrl)
+5. **Phase 10**: Add model capability labeling
+6. **Phase 10**: Improve per-provider error display
+7. **Phase 10**: Implement OpenCode-inspired settings normalization in `local-api`
 
 ---
 

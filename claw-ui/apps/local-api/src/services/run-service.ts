@@ -8,6 +8,7 @@ import type {
   RunStatus,
 } from "../../../../shared/contracts/index.js";
 import type { EngineAdapter, RunningEngineHandle } from "../adapters/engine-adapter.js";
+import { resolveExecutionSettings } from "./llm-settings-resolution.js";
 
 type ActiveRun = {
   handle: RunningEngineHandle;
@@ -32,11 +33,14 @@ export class RunService {
     this.logs.set(run.id, []);
 
     try {
+      // Resolve settings using centralized provider resolution
+      const resolvedSettings = resolveExecutionSettings(settings);
+      
       const handle = this.adapter.startRun(
         {
           ...run,
           permissionMode: request.permissionMode ?? "default",
-          settings,
+          settings: resolvedSettings,
           attachments: request.attachments,
           projectMemory: request.projectMemory,
           role: request.role,

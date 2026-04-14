@@ -7,6 +7,10 @@ const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const GOOGLE_OPENAI_COMPAT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/";
 const OPENAI_BASE_URL = "https://api.openai.com/v1";
 
+// Cloud provider taxonomy - fixed per spec
+// Note: 'custom' is reserved/transitional in Phase 9B
+// Full nested customProvider shape will land in Phase 9C
+// Current Phase 9B support is compatibility-only minimal placeholder
 const KNOWN_CLOUD_PROVIDERS: CloudProvider[] = ["google", "openrouter", "openai", "anthropic"];
 
 /**
@@ -124,6 +128,8 @@ export class ProviderResolutionService {
     }
     
     // For custom provider, return as-is but type it as custom
+    // Note: Phase 9B only supports minimal placeholder for 'custom'
+    // Full custom provider implementation will come in Phase 9C
     if (normalized === 'custom') {
       return 'custom' as CloudProvider;
     }

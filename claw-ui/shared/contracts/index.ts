@@ -2,6 +2,17 @@ export type LlmToolMode = "enabled" | "disabled";
 export type ExecutionMode = "cloud" | "local";
 export type CloudProvider = "google" | "openrouter" | "openai" | "anthropic" | "custom";
 
+// Custom provider configuration placeholder for Phase 9C
+// In Phase 9B, only the 'custom' provider identifier is supported minimally
+export type CustomProviderPlaceholder = {
+  providerId?: string;
+  displayName?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  modelId?: string;
+  // Additional Phase 9C fields will be added later
+};
+
 export type LlmSettings = {
   executionMode?: ExecutionMode;
   provider?: CloudProvider | string;
@@ -15,6 +26,8 @@ export type LlmSettings = {
     anthropic?: string;
   };
   providerOptions?: Record<string, unknown>;
+  // Phase 9C placeholder - full implementation will come in Phase 9C
+  customProvider?: CustomProviderPlaceholder;
 };
 
 export type AppSettings = {

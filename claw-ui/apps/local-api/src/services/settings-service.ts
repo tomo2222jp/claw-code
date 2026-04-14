@@ -5,10 +5,15 @@ import type { AppSettings } from "../../../../shared/contracts/index.js";
 import { ProviderResolutionService } from "./provider-resolution-service.js";
 
 const DEFAULT_SETTINGS: AppSettings = {
-  activeProvider: "openrouter",
-  activeModel: "openai/gpt-oss-120b:free",
+  // Legacy fields for backward compatibility - aligned with llmSettings defaults
+  activeProvider: "google",
+  activeModel: "gemini-2.5-flash",
   retryCount: 2,
-  openaiBaseUrl: "https://openrouter.ai/api/v1",
+  // openaiBaseUrl remains for legacy UI/API compatibility
+  // In practice, execution uses llmSettings.baseUrl or provider-specific defaults
+  openaiBaseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/",
+  
+  // Primary settings following spec Standard default
   llmSettings: {
     executionMode: "cloud",
     provider: "google",

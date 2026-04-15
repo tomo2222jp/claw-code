@@ -9,7 +9,9 @@ export const PROVIDER_CAPABILITIES: Record<string, ProviderCapability> = {
     supportsVision: true,
     supportsCustomEndpoint: false,
     stability: "recommended",
-    notes: "Best starting point for most users"
+    notes: "Best starting point for most users",
+    summary: "Best default for most users",
+    bestFor: "Balanced general use, tools, and multimodal workflows"
   },
   openrouter: {
     provider: "openrouter",
@@ -19,7 +21,10 @@ export const PROVIDER_CAPABILITIES: Record<string, ProviderCapability> = {
     supportsVision: false,
     supportsCustomEndpoint: false,
     stability: "supported",
-    notes: "Aggregated access to multiple providers"
+    notes: "Aggregated access to multiple providers",
+    summary: "Flexible access to many remote models",
+    bestFor: "Trying multiple hosted models through one provider",
+    caution: "Tool behavior may vary by model"
   },
   openai: {
     provider: "openai",
@@ -29,7 +34,9 @@ export const PROVIDER_CAPABILITIES: Record<string, ProviderCapability> = {
     supportsVision: true,
     supportsCustomEndpoint: false,
     stability: "supported",
-    notes: "Original GPT models and APIs"
+    notes: "Original GPT models and APIs",
+    summary: "Strong compatibility with OpenAI-style workflows",
+    bestFor: "Well-known hosted API workflows and broad ecosystem support"
   },
   anthropic: {
     provider: "anthropic",
@@ -39,7 +46,9 @@ export const PROVIDER_CAPABILITIES: Record<string, ProviderCapability> = {
     supportsVision: false,
     supportsCustomEndpoint: false,
     stability: "supported",
-    notes: "Claude models with strong reasoning"
+    notes: "Claude models with strong reasoning",
+    summary: "Strong reasoning-oriented hosted option",
+    bestFor: "Reasoning-heavy tasks and Claude-style workflows"
   },
   custom: {
     provider: "custom",
@@ -49,7 +58,10 @@ export const PROVIDER_CAPABILITIES: Record<string, ProviderCapability> = {
     supportsVision: "depends",
     supportsCustomEndpoint: true,
     stability: "experimental",
-    notes: "Connect to any OpenAI-compatible endpoint"
+    notes: "Connect to any OpenAI-compatible endpoint",
+    summary: "Connect your own OpenAI-compatible endpoint",
+    bestFor: "Advanced users using custom or self-hosted endpoints",
+    caution: "Capabilities depend entirely on the endpoint implementation"
   }
 };
 

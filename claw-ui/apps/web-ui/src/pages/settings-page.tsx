@@ -50,7 +50,30 @@ function CapabilityDisplay({ capability }: CapabilityDisplayProps) {
         </span>
       </div>
       
-      {capability.notes && (
+      {/* Enhanced provider guidance */}
+      {(capability.summary || capability.bestFor || capability.caution) && (
+        <div className="provider-guidance">
+          {capability.summary && (
+            <div className="guidance-summary">
+              <strong>Summary:</strong> {capability.summary}
+            </div>
+          )}
+          
+          {capability.bestFor && (
+            <div className="guidance-best-for">
+              <strong>Best for:</strong> {capability.bestFor}
+            </div>
+          )}
+          
+          {capability.caution && (
+            <div className="guidance-caution">
+              <strong>Note:</strong> {capability.caution}
+            </div>
+          )}
+        </div>
+      )}
+      
+      {capability.notes && !capability.summary && (
         <p className="hint">{capability.notes}</p>
       )}
       
@@ -262,14 +285,25 @@ export function SettingsPage({ settings, onSave, saveMessage, saveError }: Setti
         </button>
       </div>
 
-      {/* Standard Mode (Recommended Default) */}
+{/* Standard Mode (Recommended Default) */}
       {!showAdvanced && !isCustomProvider && (
         <div className="settings-section">
           <h3>Standard Mode</h3>
           <p className="hint">
-            Recommended default setup using Gemini 2.5 Flash via Google.
-            This is what most users should use for best results.
+            <strong>Recommended starting point for most users.</strong> This balanced default 
+            provides tools, streaming, and vision support optimized for Claude Code workflows.
           </p>
+          
+          <div className="standard-recommendation">
+            <div className="recommendation-badge">
+              <span className="badge-icon">★</span>
+              <span className="badge-text">Default Recommendation</span>
+            </div>
+            <p className="recommendation-reason">
+              Google/Gemini offers the best balance of capability, reliability, and 
+              seamless integration for most development and coding tasks.
+            </p>
+          </div>
           
           <div className="standard-settings">
             <div className="standard-info">

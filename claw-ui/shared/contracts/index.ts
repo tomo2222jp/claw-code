@@ -114,9 +114,14 @@ export type ProviderCapability = {
   supportsTools: boolean | "depends";
   supportsStreaming: boolean | "depends";
   supportsVision: boolean | "depends";
-  supportsCustomEndpoint: boolean;
+  supportsCustomEndpoint: boolean | "depends";
   stability: "recommended" | "supported" | "experimental";
   notes?: string;
+  
+  // Enhanced provider guidance metadata
+  summary?: string;
+  bestFor?: string;
+  caution?: string;
 };
 
 // Test Connection Result
